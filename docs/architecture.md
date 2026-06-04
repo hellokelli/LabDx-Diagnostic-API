@@ -44,21 +44,23 @@ graph TD
 
     F3 --> G[JSON Response]
     G --> H[Client]
+```
 
-##Layer Descriptions
+## Layer Descriptions
 
-1. API Gateway Layer
+### 1. API Gateway Layer
 
 The entry point for all client requests. Handles authentication, rate limiting, and request validation.
-Component	Purpose	Implementation
-Authentication	Verify API key and JWT token	OAuth 2.0 / API Key
-Rate Limiting	Prevent abuse and ensure fair usage	100 requests per minute per API key
-Request Validation	Validate JSON schema against Pydantic models	FastAPI + Pydantic
+| Component	| Purpose | Implementation |
+| --------- | ------- | -------------- |
+| Authentication | 	Verify API key and JWT token | 	OAuth 2.0 / API Key| 
+| Rate Limiting | Prevent abuse and ensure fair usage	| 100 requests per minute per API key| 
+| Request Validation	| Validate JSON schema against Pydantic models	| FastAPI + Pydantic| 
 
-2. Test Name Resolver
+### 2. Test Name Resolver
 
 Converts free-text test names (e.g., "CBC", "complete blood count") to standardized LOINC codes.
-
+```mermaid
 graph LR
     A[Raw Test Name] --> B{In Redis Cache?}
     B -->|Yes| C[Return Cached LOINC]
@@ -69,23 +71,23 @@ graph LR
     G --> H[Return Best Match]
     F --> C
     H --> C
-
-Caching Strategy:
+```
+**Caching Strategy:**
 * Cache TTL: 30 days
 * Cache key: normalized test name (lowercase, stripped)
 * Cache store: Redis
 
-Fallback Chain:
+**Fallback Chain:**
 * Exact match against canonical list
 * Fuzzy match using rapidfuzz (token sort ratio)
 * LLM resolution (GPT-3.5 or local Llama)
 * Return error with suggestion
 
-3. Feature Pipeline
+### 3. Feature Pipeline
 
 Converts raw lab data into a fixed-dimension feature vector for the model.
 
-Input Data Structure:
+**Input Data Structure:**
 ```
 {
   "patient_id": "P001",
@@ -96,7 +98,7 @@ Input Data Structure:
 }
 ```
 
-###Feature Categories:
+#### Feature Categories:
 | Category	| Features | Count |
 | --------  | -------- | ----- |
 |CBC Parameters |	Hemoglobin, MCV, MCH, RBC, RDW, platelets, WBC |	7|
@@ -107,14 +109,14 @@ Input Data Structure:
 |Missing Indicators |	Binary flags for each lab at each timepoint |	7|
 |Total Feature Vector | |	28-50 (varies by available data)|
 
-###Derived Index Formulas:
+#### Derived Index Formulas:
 | Index |	Formula |	Clinical Use |
 | ----- | ------- | ------------ |
 |Mentzer Index |	MCV / RBC	<13  | suggests thalassemia trait|
 |Green & King Index |	(MCV^2 * RDW) / (Hb * 100) |	Elevated in iron deficiency|
 |England & Fraser Index |	MCV - RBC - (5 * Hb) - 8.4	>0 | suggests thalassemia trait|
 
-Temporal Feature Calculation:
+**Temporal Feature Calculation:**
 
 For each patient with at least two measurements separated by at least 30 days:
 ```
@@ -122,11 +124,11 @@ slope = (value_latest - value_earliest) / (days_difference / 30.44)
 ```
 Where 30.44 is average days per month.
 
-4. Prediction Engine
+### 4. Prediction Engine
 
 The core ML component. Runs XGBoost inference and anomaly detection.
 
-###XGBoost Model:
+#### XGBoost Model:
 | Parameter | Value |	Rationale |
 | --------- | ----- | --------- |
 | Algorithm	| XGBoost 2.0+	| Best for tabular data, handles missing values| 
@@ -136,34 +138,34 @@ The core ML component. Runs XGBoost inference and anomaly detection.
 | Features	| ~50 numeric features |	Derived from CBC and temporal analysis| 
 | Inference speed	| <100ms per request	| On t4g.small instance| 
 
-###Anomaly Detection:
+#### Anomaly Detection:
 * Algorithm: Isolation Forest
 * Contamination: 0.05 (expect 5% of patterns to be unusual)
 * Output: Anomaly score (0 to 1)
 * Threshold: >0.75 triggers "unrecognized pattern" flag
 
-###Rare Disease Retriever (if anomaly flagged):
+#### Rare Disease Retriever (if anomaly flagged):
 * Method: k-Nearest Neighbors (k=3)
 * Search space: Case report database (PubMed Central)
 * Similarity metric: Cosine similarity on lab feature vectors
 
-5. Post-Processing
+### 5. Post-Processing
 
 Refines raw model outputs into clinically useful predictions.
 
-###Calibration (Platt Scaling):
+#### Calibration (Platt Scaling):
 ```
 from sklearn.calibration import CalibratedClassifierCV
 calibrated_model = CalibratedClassifierCV(model, method='platt', cv=5)
 ```
 Converts raw XGBoost scores (0 to 1 but not well-calibrated) to true probabilities.
 
-###Confidence Intervals (Conformal Prediction):
+#### Confidence Intervals (Conformal Prediction):
 * Method: Split conformal prediction
 * Coverage target: 90%
 * Output: [lower_bound, upper_bound] for each diagnosis
 
-###SHAP Values:
+#### SHAP Values:
 ```
 import shap
 explainer = shap.TreeExplainer(model)
@@ -182,7 +184,7 @@ Example mapping:
 ]
 ```
 
-6. Response Formatter
+### 6. Response Formatter
 
 Assembles final JSON response for the client.
 
@@ -212,7 +214,8 @@ Output Structure:
   "recommended_followup_tests": ["hemoglobin electrophoresis"]
 }
 ```
-Data Flow
+**Data Flow** 
+```mermaid
 sequenceDiagram
     participant Client
     participant Gateway as API Gateway
@@ -253,3 +256,4 @@ sequenceDiagram
     Post->>Citations: Look up references by ICD-10
     Citations->>Post: Citation list
     Post->>Client: JSON response
+```
