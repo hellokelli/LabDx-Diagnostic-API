@@ -257,3 +257,47 @@ sequenceDiagram
     Citations->>Post: Citation list
     Post->>Client: JSON response
 ```
+
+1. Client sends request to API Gateway
+2. Gateway validates API key and rate limit
+3. Test Name Resolver converts raw test names to LOINC codes
+4. Feature Pipeline calculates temporal aggregates and derived indices
+5. XGBoost model generates raw probabilities
+6. Anomaly detector computes anomaly score
+7. Post-Processing applies calibration, SHAP, and citation lookup
+8. Response Formatter returns JSON to client
+
+### Technology Stack Summary
+| Layer	| Technology | Purpose| 
+| ----- | --------- | ------|
+| API Framework	| FastAPI	| Async request handling| 
+| ML Engine	| XGBoost	| Predictive modeling| 
+| Cache	| Redis	| Test name caching| 
+| FHIR Handling	| fhir.resources	| Resource validation| 
+| LLM (optional)	| LiteLLM	| Test name resolution| 
+| Deployment	| Docker and Kubernetes	| Container orchestration| 
+
+### Security and Compliance
+| Concern	| Implementation| 
+| ---- | --- |
+| Authentication	| API key plus JWT| 
+| Data in transit	| TLS 1.3| 
+| PHI handling	| De-identification before processing| 
+| Audit logging	| All requests logged with request_id| 
+| HIPAA	| Business Associate Agreements with cloud providers| 
+
+### Scalability Considerations
+| Component	| Scaling Strategy| 
+| --- | --- |
+| API Instances	| Horizontal scaling based on CPU above 70 percent| 
+| Redis Cache	| Cluster mode for high availability| 
+| Model Inference	| Less than 100ms per request, no GPU needed| 
+| Database	| Read replicas for logs and analytics| 
+
+### Failure Handling
+| Failure Mode	| Mitigation| 
+| --- | --- |
+| LLM timeout	| Fallback to fuzzy matching| 
+| Cache unavailable	| Direct to LLM (slower but works)| 
+| Model load failure	| Health check fails, instance removed from load balancer| 
+| Invalid FHIR bundle	| Return 400 with validation errors| 
