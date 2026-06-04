@@ -1,0 +1,410 @@
+openapi: 3.0.0
+info:
+  title: LabDx Diagnostic API
+  description: |
+    API that analyzes longitudinal laboratory results and returns a ranked 
+    differential diagnosis with confidence scores, SHAP feature attribution, 
+    and peer-reviewed citations.
+  version: 1.0.0
+  license:
+    name: Proprietary - Demonstration Only
+    url: https://github.com/hellokelli/LabDx-Diagnostic-API
+
+servers:
+  - url: https://api.labdxserver.com/v1
+    description: Production server
+  - url: https://sandbox.labdxserver.com/v1
+    description: Sandbox server
+  - url: http://localhost:8000/v1
+    description: Local development
+
+tags:
+  - name: diagnose
+    description: Diagnostic prediction endpoints
+  - name: health
+    description: Health check endpoints
+
+paths:
+  /diagnose:
+    post:
+      tags:
+        - diagnose
+      summary: Generate differential diagnosis from lab results
+      description: |
+        Accepts patient laboratory history and optional clinical context. 
+        Returns ranked potential diagnoses with confidence scores, supporting 
+        evidence, and SHAP feature attributions.
+      operationId: diagnose
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DiagnoseRequest'
+            examples:
+              basic:
+                summary: Basic lab results
+                value:
+                  patient:
+                    birth_year: 1975
+                    sex: F
+                  lab_history:
+                    - date: 2024-01-15
+                      test_name: hemoglobin
+                      value: 12.1
+                      unit: g/dL
+                    - date: 2024-06-20
+                      test_name: hemoglobin
+                      value: 11.4
+                      unit: g/dL
+                    - date: 2024-06-20
+                      test_name: MCV
+                      value: 70
+                      unit: fL
+              fhir:
+                summary: FHIR bundle
+                value:
+                  resourceType: Bundle
+                  type: collection
+                  entry:
+                    - resource:
+                        resourceType: Patient
+                        birthDate: "1975"
+                        gender: female
+                    - resource:
+                        resourceType: Observation
+                        status: final
+                        code:
+                          coding:
+                            - system: http://loinc.org
+                              code: 718-7
+                        valueQuantity:
+                          value: 11.4
+                          unit: g/dL
+                        effectiveDateTime: 2024-06-20
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DiagnoseResponse'
+              examples:
+                success:
+                  summary: Example diagnosis
+                  value:
+                    request_id: req_20260604_abc123
+                    processing_time_ms: 847
+                    potential_diagnoses:
+                      - diagnosis: Beta-thalassemia trait
+                        icd10: D56.3
+                        confidence: 0.78
+                        confidence_interval_lower: 0.71
+                        confidence_interval_upper: 0.85
+                        supporting_labs:
+                          - microcytosis out of proportion to anemia
+                          - normal ferritin
+                        feature_contributions:
+                          - feature: mentzer_index
+                            value: 12.5
+                            shap: 0.31
+                        citations:
+                          - reference: Taher et al. (2018) Lancet
+                            doi: 10.1016/S0140-6736(18)30698-9
+                    anomaly_flag: false
+        '400':
+          description: Bad request - validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized - invalid API key
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '429':
+          description: Rate limit exceeded
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /health:
+    get:
+      tags:
+        - health
+      summary: Health check endpoint
+      description: Returns the health status of the API and its dependencies
+      operationId: health
+      responses:
+        '200':
+          description: API is healthy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+        '503':
+          description: API is unhealthy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+
+  /metrics:
+    get:
+      tags:
+        - health
+      summary: Prometheus metrics endpoint
+      description: Exposes metrics for monitoring and alerting
+      operationId: metrics
+      responses:
+        '200':
+          description: Metrics in Prometheus format
+          content:
+            text/plain:
+              schema:
+                type: string
+
+components:
+  schemas:
+    PatientContext:
+      type: object
+      properties:
+        birth_year:
+          type: integer
+          minimum: 1900
+          maximum: 2026
+          description: Patient year of birth for age calculation
+        sex:
+          type: string
+          enum: [M, F, other]
+          description: Patient biological sex
+        pregnant:
+          type: boolean
+          description: Pregnancy status (affects reference ranges)
+        medications:
+          type: array
+          items:
+            type: string
+          description: List of current medication names
+        problems:
+          type: array
+          items:
+            type: string
+          description: List of current ICD-10 codes or problem descriptions
+      minProperties: 1
+
+    LabResult:
+      type: object
+      required:
+        - date
+        - test_name
+        - value
+        - unit
+      properties:
+        date:
+          type: string
+          format: date
+          description: Date of lab collection (YYYY-MM-DD)
+        test_name:
+          type: string
+          description: Free-text test name (e.g., hemoglobin, CBC, MCV)
+        loinc_code:
+          type: string
+          pattern: '^\d+-\d+$'
+          description: LOINC code (optional, bypasses LLM resolution)
+        value:
+          type: number
+          description: Numeric result value
+        unit:
+          type: string
+          description: UCUM unit (e.g., g/dL, fL, ng/mL)
+        reference_range_low:
+          type: number
+          description: Lower limit of reference range
+        reference_range_high:
+          type: number
+          description: Upper limit of reference range
+
+    DiagnoseRequest:
+      type: object
+      required:
+        - patient
+        - lab_history
+      properties:
+        patient_id:
+          type: string
+          description: Optional external patient identifier
+        patient:
+          $ref: '#/components/schemas/PatientContext'
+        lab_history:
+          type: array
+          items:
+            $ref: '#/components/schemas/LabResult'
+          minItems: 1
+        options:
+          type: object
+          properties:
+            include_shap:
+              type: boolean
+              default: true
+            max_diagnoses:
+              type: integer
+              minimum: 1
+              maximum: 20
+              default: 10
+
+    Diagnosis:
+      type: object
+      properties:
+        diagnosis:
+          type: string
+          description: Name of the potential diagnosis
+        icd10:
+          type: string
+          pattern: '^[A-Z][0-9]{2}\.[0-9]+$'
+          description: ICD-10 code
+        confidence:
+          type: number
+          minimum: 0
+          maximum: 1
+          description: Calibrated probability
+        confidence_interval_lower:
+          type: number
+          minimum: 0
+          maximum: 1
+        confidence_interval_upper:
+          type: number
+          minimum: 0
+          maximum: 1
+        supporting_labs:
+          type: array
+          items:
+            type: string
+          description: Lab findings that support this diagnosis
+        feature_contributions:
+          type: array
+          items:
+            type: object
+            properties:
+              feature:
+                type: string
+              value:
+                type: number
+              shap:
+                type: number
+        citations:
+          type: array
+          items:
+            type: object
+            properties:
+              reference:
+                type: string
+              doi:
+                type: string
+
+    DiagnoseResponse:
+      type: object
+      properties:
+        request_id:
+          type: string
+          description: Unique identifier for the request
+        patient_id:
+          type: string
+          description: Echoed from request
+        processing_time_ms:
+          type: integer
+          description: Total processing time in milliseconds
+        canonical_labs:
+          type: array
+          items:
+            type: object
+            properties:
+              test:
+                type: string
+              value:
+                type: number
+              unit:
+                type: string
+              loinc:
+                type: string
+              date:
+                type: string
+                format: date
+        potential_diagnoses:
+          type: array
+          items:
+            $ref: '#/components/schemas/Diagnosis'
+        anomaly_flag:
+          type: boolean
+          description: True if lab pattern does not match common conditions
+        anomaly_score:
+          type: number
+          minimum: 0
+          maximum: 1
+        recommended_followup_tests:
+          type: array
+          items:
+            type: string
+        model_version:
+          type: string
+
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+          enum:
+            - invalid_request
+            - unauthorized
+            - rate_limit_exceeded
+            - server_error
+            - not_found
+        message:
+          type: string
+        request_id:
+          type: string
+        retry_after_seconds:
+          type: integer
+
+    HealthResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [healthy, unhealthy]
+        model_loaded:
+          type: boolean
+        cache_connected:
+          type: boolean
+        llm_available:
+          type: boolean
+        uptime_seconds:
+          type: integer
+        last_restart:
+          type: string
+          format: date-time
+
+  securitySchemes:
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-Key
+      description: API key issued per clinical site
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: JWT token for physician authentication
+
+security:
+  - ApiKeyAuth: []
+  - BearerAuth: []
