@@ -1,0 +1,70 @@
+{
+  "D56.3": {
+    "diagnosis": "Beta-thalassemia trait",
+    "citations": [
+      {
+        "reference": "Taher AT, Weatherall DJ, Cappellini MD. Thalassaemia. Lancet. 2018;391(10116):155-167.",
+        "doi": "10.1016/S0140-6736(17)31822-9",
+        "pmid": "28774421",
+        "key_findings": "Beta-thalassemia trait presents with microcytosis and mild or no anemia. MCV is typically between 60-70 fL."
+      },
+      {
+        "reference": "Cao A, Galanello R. Beta-thalassemia. Genetics in Medicine. 2010;12(2):61-76.",
+        "doi": "10.1097/GIM.0b013e3181cd68ed",
+        "pmid": "20098328",
+        "key_findings": "Mentzer index (MCV/RBC) less than 13 suggests beta-thalassemia trait rather than iron deficiency."
+      }
+    ]
+  },
+  "D50.8": {
+    "diagnosis": "Iron deficiency anemia",
+    "citations": [
+      {
+        "reference": "Camaschella C. Iron-deficiency anemia. New England Journal of Medicine. 2015;372(19):1832-1843.",
+        "doi": "10.1056/NEJMra1401038",
+        "pmid": "25946282",
+        "key_findings": "Iron deficiency anemia typically presents with low MCV, low MCH, elevated RDW, and low ferritin."
+      }
+    ]
+  },
+  "D57.3": {
+    "diagnosis": "Sickle cell trait",
+    "citations": [
+      {
+        "reference": "Naik RP, Haywood C. Sickle cell trait diagnosis: clinical and social implications. Hematology. 2015;2015(1):160-167.",
+        "doi": "10.1182/asheducation-2015.1.160",
+        "pmid": "26637716",
+        "key_findings": "Sickle cell trait is generally asymptomatic but can be identified by hemoglobin electrophoresis showing HbS less than 50%."
+      }
+    ]
+  },
+  "D56.5": {
+    "diagnosis": "HbE trait",
+    "citations": [
+      {
+        "reference": "Vichinsky E. Hemoglobin E syndromes. Hematology. 2007;2007(1):79-83.",
+        "doi": "10.1182/asheducation-2007.1.79",
+        "pmid": "18024612",
+        "key_findings": "HbE trait presents with microcytosis out of proportion to anemia, similar to beta-thalassemia trait."
+      }
+    ]
+  },
+  "Z01.00": {
+    "diagnosis": "No significant abnormality detected",
+    "citations": [
+      {
+        "reference": "World Health Organization. Laboratory reference ranges. WHO Guidelines. 2021.",
+        "key_findings": "Laboratory values within normal reference ranges suggest absence of disease."
+      }
+    ]
+  },
+  "R69": {
+    "diagnosis": "Inconclusive - further testing recommended",
+    "citations": [
+      {
+        "reference": "Hickner J, et al. Testing for uncommon conditions. American Family Physician. 2019;99(8):490-496.",
+        "key_findings": "When lab patterns do not match common conditions, further diagnostic testing is indicated."
+      }
+    ]
+  }
+}

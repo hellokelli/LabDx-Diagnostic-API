@@ -1,0 +1,35 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+venv/
+.env
+*.egg-info/
+/xgboost/
+
+# Data files (too large or sensitive)
+*.xpt
+*.csv
+*.RData
+*.rds
+
+# Jupyter notebooks (optional - remove if you want to track them)
+.ipynb_checkpoints/
+*.ipynb
+
+# API and logs
+*.log
+*.db
+*.sqlite
+
+# IDE and OS
+.DS_Store
+.vscode/
+.idea/
+*.swp
+
+# Streamlit
+.streamlit/secrets.toml
+
+# GitHub workflows (local testing)
+.github/
