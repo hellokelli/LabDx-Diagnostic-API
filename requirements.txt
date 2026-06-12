@@ -1,13 +1,10 @@
 pandas
 numpy
-scikit-learn
 xgboost
+shap
 fastapi
 uvicorn
-pytest
-jupyter
-matplotlib
-seaborn
-requests
-python-dotenv
+pydantic
+fuzzywuzzy
+python-Levenshtein
 slowapi
