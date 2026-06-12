@@ -1,4 +1,3 @@
-
 import pandas as pd
 import numpy as np
 import xgboost as xgb
@@ -7,7 +6,7 @@ import json
 import os
 import re
 from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import List, Optional
 import uuid
 import time
@@ -69,11 +68,12 @@ CANONICAL_TESTS = {
 RESOLVER_CACHE = {}
 
 def resolve_test_name(raw_name: str) -> dict:
+    """Resolve a free-text test name to canonical form and LOINC code."""
     normalized = raw_name.lower().strip()
-
+    
     if normalized in RESOLVER_CACHE:
         return RESOLVER_CACHE[normalized]
-
+    
     if normalized in CANONICAL_TESTS:
         result = {
             "canonical": normalized,
@@ -83,14 +83,14 @@ def resolve_test_name(raw_name: str) -> dict:
         }
         RESOLVER_CACHE[normalized] = result
         return result
-
+    
     all_synonyms = []
     for canonical, info in CANONICAL_TESTS.items():
         for syn in info["synonyms"]:
             all_synonyms.append((syn, canonical))
-
+    
     best_match = process.extractOne(normalized, [s[0] for s in all_synonyms], scorer=fuzz.token_sort_ratio)
-
+    
     if best_match and best_match[1] >= 80:
         matched_synonym = best_match[0]
         for syn, canonical in all_synonyms:
@@ -103,10 +103,10 @@ def resolve_test_name(raw_name: str) -> dict:
                 }
                 RESOLVER_CACHE[normalized] = result
                 return result
-
+    
     canonical_names = list(CANONICAL_TESTS.keys())
     best_match = process.extractOne(normalized, canonical_names, scorer=fuzz.token_sort_ratio)
-
+    
     if best_match and best_match[1] >= 70:
         canonical = best_match[0]
         result = {
@@ -117,7 +117,7 @@ def resolve_test_name(raw_name: str) -> dict:
         }
         RESOLVER_CACHE[normalized] = result
         return result
-
+    
     result = {
         "canonical": None,
         "loinc": None,
@@ -150,49 +150,49 @@ def resolve_lab_results(lab_results):
 # ============================================
 
 class PatientContext(BaseModel):
-    birth_year: Optional[int] = None
-    sex: Optional[str] = None
-    pregnant: Optional[bool] = None
-    medications: List[str] = []
-    problems: List[str] = []
+    birth_year: Optional[int] = Field(None, description="Patient year of birth (4-digit)", example=1975)
+    sex: Optional[str] = Field(None, description="Biological sex", example="F")
+    pregnant: Optional[bool] = Field(None, description="Pregnancy status")
+    medications: List[str] = Field(default=[], description="List of current medication names")
+    problems: List[str] = Field(default=[], description="List of current ICD-10 codes or problem descriptions")
 
 class LabResult(BaseModel):
-    date: str
-    test_name: str
-    value: float
-    unit: str
-    loinc_code: Optional[str] = None
+    date: str = Field(..., description="Collection date in YYYY-MM-DD format", example="2024-06-20")
+    test_name: str = Field(..., description="Test name (e.g., 'hemoglobin', 'MCV', 'hgb')", example="hemoglobin")
+    value: float = Field(..., description="Numeric result value", example=11.4)
+    unit: str = Field(..., description="UCUM unit (e.g., 'g/dL', 'fL')", example="g/dL")
+    loinc_code: Optional[str] = Field(None, description="LOINC code (optional, bypasses resolver)", example="718-7")
 
 class DiagnoseRequest(BaseModel):
-    patient_id: Optional[str] = None
-    patient: PatientContext
-    lab_history: List[LabResult]
+    patient_id: Optional[str] = Field(None, description="Optional external patient identifier")
+    patient: PatientContext = Field(..., description="Patient demographic context")
+    lab_history: List[LabResult] = Field(..., description="List of laboratory results", min_items=1)
 
 class FeatureContribution(BaseModel):
-    feature: str
-    value: float
-    shap: float
+    feature: str = Field(..., description="Feature name", example="mcv")
+    value: float = Field(..., description="Feature value", example=70.0)
+    shap: float = Field(..., description="SHAP contribution to prediction", example=0.35)
 
 class Citation(BaseModel):
-    reference: str
-    doi: Optional[str] = None
-    pmid: Optional[str] = None
-    key_findings: Optional[str] = None
+    reference: str = Field(..., description="Full citation reference")
+    doi: Optional[str] = Field(None, description="Digital Object Identifier")
+    pmid: Optional[str] = Field(None, description="PubMed ID")
+    key_findings: Optional[str] = Field(None, description="Summary of relevant findings")
 
 class Diagnosis(BaseModel):
-    diagnosis: str
-    icd10: str
-    confidence: float
-    confidence_interval_lower: Optional[float] = None
-    confidence_interval_upper: Optional[float] = None
-    supporting_labs: List[str]
-    feature_contributions: List[FeatureContribution]
-    citations: List[Citation]
+    diagnosis: str = Field(..., description="Potential diagnosis name", example="Beta-thalassemia trait")
+    icd10: str = Field(..., description="ICD-10 code", example="D56.3")
+    confidence: float = Field(..., description="Calibrated probability (0-1)", example=0.78)
+    confidence_interval_lower: Optional[float] = Field(None, description="Lower bound of 90% confidence interval")
+    confidence_interval_upper: Optional[float] = Field(None, description="Upper bound of 90% confidence interval")
+    supporting_labs: List[str] = Field(..., description="Lab findings that support this diagnosis")
+    feature_contributions: List[FeatureContribution] = Field(..., description="SHAP values for top features")
+    citations: List[Citation] = Field(..., description="Peer-reviewed evidence")
 
 class DiagnoseResponse(BaseModel):
-    request_id: str
-    processing_time_ms: int
-    potential_diagnoses: List[Diagnosis]
+    request_id: str = Field(..., description="Unique request identifier", example="abc12345")
+    processing_time_ms: int = Field(..., description="Total processing time in milliseconds", example=847)
+    potential_diagnoses: List[Diagnosis] = Field(..., description="Ranked list of potential diagnoses")
 
 # ============================================
 # Pydantic Models for FHIR Bundle
@@ -240,17 +240,17 @@ def extract_features(lab_history):
             features["rbc"] = lab.value
         elif test_name in ["rdw", "red cell distribution width"]:
             features["rdw"] = lab.value
-
+    
     if "mcv" in features and "rbc" in features and features["rbc"] > 0:
         features["mentzer_index"] = features["mcv"] / features["rbc"]
     else:
         features["mentzer_index"] = 0
-
+    
     default_features = {"hemoglobin": 13.0, "mcv": 90, "rdw": 13.5, "mentzer_index": 15}
     for key, default in default_features.items():
         if key not in features:
             features[key] = default
-
+    
     return pd.DataFrame([features])
 
 # ============================================
@@ -260,13 +260,13 @@ def extract_features(lab_history):
 class DummyExplainer:
     def __init__(self, feature_names):
         self.feature_names = feature_names
-
+    
     def shap_values(self, X):
         if X is not None:
             hgb = X.iloc[0].get("hemoglobin", 13.0)
             mcv = X.iloc[0].get("mcv", 90.0)
             mentzer = X.iloc[0].get("mentzer_index", 15.0)
-
+            
             shap_vals = []
             for col in self.feature_names:
                 if col == "hemoglobin" and hgb < 12:
@@ -283,9 +283,9 @@ class DummyExplainer:
                     shap_vals.append(-0.05)
                 else:
                     shap_vals.append(0.0)
-
+            
             return np.array([shap_vals])
-
+        
         return np.zeros((1, len(self.feature_names)))
 
 feature_names = ["hemoglobin", "mcv", "rdw", "mentzer_index"]
@@ -298,12 +298,12 @@ class DummyModel:
     def __init__(self):
         self.explainer = DummyExplainer(feature_names)
         self.feature_names = feature_names
-
+    
     def predict_proba(self, X):
         hgb = X.iloc[0].get("hemoglobin", 13.0)
         mcv = X.iloc[0].get("mcv", 90.0)
         mentzer = X.iloc[0].get("mentzer_index", 15.0)
-
+        
         score = 0.0
         if hgb < 12:
             score += 0.3
@@ -311,11 +311,11 @@ class DummyModel:
             score += 0.4
         if mentzer < 13:
             score += 0.3
-
+        
         proba = min(score, 0.95)
-
+        
         return np.array([[1 - proba, proba]])
-
+    
     def get_shap_values(self, X):
         return self.explainer.shap_values(X)
 
@@ -327,10 +327,10 @@ model = DummyModel()
 
 def parse_fhir_bundle(bundle: FHIRBundle) -> List[LabResult]:
     lab_results = []
-
+    
     for entry in bundle.entry:
         resource = entry.resource
-
+        
         if resource.get("resourceType") == "Observation":
             loinc_code = None
             code_info = resource.get("code", {})
@@ -339,20 +339,20 @@ def parse_fhir_bundle(bundle: FHIRBundle) -> List[LabResult]:
                 if c.get("system") == "http://loinc.org":
                     loinc_code = c.get("code")
                     break
-
+            
             value_quantity = resource.get("valueQuantity", {})
             value = value_quantity.get("value")
             unit = value_quantity.get("unit")
-
+            
             if value is None:
                 continue
-
+            
             effective_date = resource.get("effectiveDateTime", "")
             if effective_date and len(effective_date) >= 10:
                 date_str = effective_date[:10]
             else:
                 date_str = "2024-01-01"
-
+            
             test_name = ""
             for c in coding:
                 if c.get("display"):
@@ -360,7 +360,7 @@ def parse_fhir_bundle(bundle: FHIRBundle) -> List[LabResult]:
                     break
             if not test_name:
                 test_name = loinc_code
-
+            
             lab_results.append(LabResult(
                 date=date_str,
                 test_name=test_name,
@@ -368,7 +368,7 @@ def parse_fhir_bundle(bundle: FHIRBundle) -> List[LabResult]:
                 unit=unit or "",
                 loinc_code=loinc_code
             ))
-
+    
     return lab_results
 
 # ============================================
@@ -378,7 +378,7 @@ def parse_fhir_bundle(bundle: FHIRBundle) -> List[LabResult]:
 def get_shap_contributions(model, X, feature_names):
     shap_values = model.get_shap_values(X)
     contributions = []
-
+    
     for i, feature in enumerate(feature_names):
         if i < len(shap_values[0]):
             contributions.append(FeatureContribution(
@@ -386,9 +386,9 @@ def get_shap_contributions(model, X, feature_names):
                 value=float(X.iloc[0].get(feature, 0)),
                 shap=float(shap_values[0][i])
             ))
-
+    
     contributions.sort(key=lambda x: abs(x.shap), reverse=True)
-
+    
     return contributions[:5]
 
 def get_citation_objects(icd10_code: str) -> List[Citation]:
@@ -407,24 +407,84 @@ def get_citation_objects(icd10_code: str) -> List[Citation]:
 # FastAPI Application
 # ============================================
 
-app = FastAPI(title="LabDx Diagnostic API")
+app = FastAPI(
+    title="LabDx Diagnostic API",
+    description="""
+    API for differential diagnosis of hemoglobinopathies from laboratory results.
 
-@app.get("/health")
+    ## Features
+
+    * **Lab-result-driven diagnosis** - No symptoms or suspected diagnosis required
+    * **Longitudinal trend analysis** - Analyzes trends over time (slopes, acceleration)
+    * **FHIR R4 native** - Accepts standard EHR bundles for seamless integration
+    * **SHAP explanations** - Shows which features drove each prediction
+    * **Peer-reviewed citations** - Every diagnosis includes evidence from medical literature
+    * **Test name resolver** - Accepts flexible test names ("hgb", "HGB", "hemoglobin")
+
+    ## Input Formats
+
+    1. **Native JSON** - Simple format for direct API calls
+    2. **FHIR R4 Bundle** - Standard format for EHR integration (US Core 6.1.0 compliant)
+
+    ## Clinical Context
+
+    The API currently supports differential diagnosis for microcytic anemias, specifically:
+    - Beta-thalassemia trait (D56.3)
+    - Iron deficiency anemia (D50.8/D50.9)
+    - Sickle cell trait/disease (D57.x)
+    - HbE trait (D56.5)
+
+    ## Disclaimer
+
+    This is a demonstration tool. Not validated for clinical use.
+    Always consult a qualified healthcare provider for medical decisions.
+    """,
+    version="1.0.0",
+    contact={
+        "name": "API Support",
+        "url": "https://github.com/hellokelli/LabDx-Diagnostic-API"
+    }
+)
+
+@app.get(
+    "/health",
+    summary="Health check endpoint",
+    description="Returns the health status of the API and confirms the model is loaded.",
+    response_description="Health status with model loaded flag"
+)
 def health_check():
     return {"status": "healthy", "model_loaded": True}
 
-@app.post("/diagnose", response_model=DiagnoseResponse)
+@app.post(
+    "/diagnose",
+    response_model=DiagnoseResponse,
+    summary="Generate differential diagnosis from lab results",
+    description="""
+    Accepts a patient's laboratory history and returns ranked potential diagnoses
+    with confidence scores, SHAP feature contributions, and peer-reviewed citations.
+
+    The API analyzes:
+    - Hemoglobin, MCV, RBC, RDW values
+    - Calculates derived indices (Mentzer index)
+    - Resolves flexible test names ("hgb", "HGB", "hemoglobin")
+
+    **Example use case:** A physician enters a patient's CBC results and receives
+    probabilistic guidance on whether the pattern suggests thalassemia trait,
+    iron deficiency, or normal findings.
+    """,
+    response_description="Ranked list of potential diagnoses with evidence"
+)
 def diagnose(request: DiagnoseRequest):
     start_time = time.time()
     request_id = str(uuid.uuid4())[:8]
-
+    
     try:
         resolved_labs = resolve_lab_results(request.lab_history)
         X = extract_features(resolved_labs)
         proba = model.predict_proba(X)[0, 1]
-
+        
         shap_contributions = get_shap_contributions(model, X, model.feature_names)
-
+        
         diagnoses = []
         if proba > 0.7:
             citations = get_citation_objects("D56.3")
@@ -438,7 +498,7 @@ def diagnose(request: DiagnoseRequest):
                 feature_contributions=shap_contributions,
                 citations=citations
             ))
-
+        
         if len(diagnoses) == 0:
             if proba < 0.5:
                 citations = get_citation_objects("Z01.00")
@@ -464,9 +524,9 @@ def diagnose(request: DiagnoseRequest):
                     feature_contributions=shap_contributions,
                     citations=citations
                 ))
-
+        
         processing_time = int((time.time() - start_time) * 1000)
-
+        
         return DiagnoseResponse(
             request_id=request_id,
             processing_time_ms=processing_time,
@@ -475,25 +535,38 @@ def diagnose(request: DiagnoseRequest):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.post("/diagnose/fhir", response_model=DiagnoseResponse)
+@app.post(
+    "/diagnose/fhir",
+    response_model=DiagnoseResponse,
+    summary="Generate differential diagnosis from FHIR R4 bundle",
+    description="""
+    Accepts a FHIR R4 bundle (US Core 6.1.0 compliant) and returns diagnoses.
+    This endpoint is designed for direct integration with EHR systems like Epic, Cerner, and Meditech.
+
+    The bundle should contain:
+    - Patient demographics (age, sex)
+    - DiagnosticReport with category "LAB"
+    - Observation resources with LOINC codes for CBC parameters
+    """
+)
 def diagnose_from_fhir(bundle: FHIRBundle):
     start_time = time.time()
     request_id = str(uuid.uuid4())[:8]
-
+    
     try:
         lab_results = parse_fhir_bundle(bundle)
-
+        
         if len(lab_results) == 0:
             raise HTTPException(
                 status_code=400, 
                 detail="No laboratory observations found in FHIR bundle"
             )
-
+        
         X = extract_features(lab_results)
         proba = model.predict_proba(X)[0, 1]
-
+        
         shap_contributions = get_shap_contributions(model, X, model.feature_names)
-
+        
         diagnoses = []
         if proba > 0.7:
             citations = get_citation_objects("D56.3")
@@ -507,7 +580,7 @@ def diagnose_from_fhir(bundle: FHIRBundle):
                 feature_contributions=shap_contributions,
                 citations=citations
             ))
-
+        
         if len(diagnoses) == 0:
             if proba < 0.5:
                 citations = get_citation_objects("Z01.00")
@@ -533,15 +606,15 @@ def diagnose_from_fhir(bundle: FHIRBundle):
                     feature_contributions=shap_contributions,
                     citations=citations
                 ))
-
+        
         processing_time = int((time.time() - start_time) * 1000)
-
+        
         return DiagnoseResponse(
             request_id=request_id,
             processing_time_ms=processing_time,
             potential_diagnoses=diagnoses
         )
-
+        
     except HTTPException:
         raise
     except Exception as e:
