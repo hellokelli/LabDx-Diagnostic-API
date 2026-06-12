@@ -20,7 +20,7 @@ graph TD
     subgraph "Processing Layer"
         C --> C1{In Cache?}
         C1 -->|Yes| D[Feature Pipeline]
-        C1 -->|No| C2[LLM Resolver]
+        C1 -->|No| C2[Fuzzy Match]
         C2 --> D
     end
 
@@ -53,63 +53,190 @@ graph TD
 The entry point for all client requests. Handles authentication, rate limiting, and request validation.
 | Component	| Purpose | Implementation |
 | --------- | ------- | -------------- |
-| Authentication | 	Verify API key and JWT token | 	OAuth 2.0 / API Key| 
+| Authentication | 	Verify API key and JWT token | 	Not implemented on Demo| 
 | Rate Limiting | Prevent abuse and ensure fair usage	| 100 requests per minute per API key| 
 | Request Validation	| Validate JSON schema against Pydantic models	| FastAPI + Pydantic| 
 
+**TODO: Add authentication layer**
+
 ### 2. Test Name Resolver
 
-Converts free-text test names (e.g., "CBC", "complete blood count") to standardized LOINC codes.
+The resolver uses exact matching and fuzzy matching (with 80% threshold) to convert free-text test names ("CBC", "complete blood count") to LOINC codes. Results are cached in memory for performance.
 ```mermaid
 graph LR
-    A[Raw Test Name] --> B{In Redis Cache?}
-    B -->|Yes| C[Return Cached LOINC]
-    B -->|No| D[LLM Resolver]
-    D --> E{Confidence > 0.8?}
-    E -->|Yes| F[Cache Result]
-    E -->|No| G[Fuzzy Match Fallback]
-    G --> H[Return Best Match]
-    F --> C
-    H --> C
+    A[Raw Test Name] --> B[Normalize]
+    B --> C{In Cache?}
+    C -->|Yes| D[Return LOINC]
+    C -->|No| E[Fuzzy Match]
+    E --> F{Match Found?}
+    F -->|Yes| G[Cache and Return]
+    F -->|No| H[Return Error]
 ```
-**Caching Strategy:**
+**Current Caching Strategy:**
+* Cache TTL: Unlimited 
+* Cache key: normalized test name (lowercase, stripped)
+* Cache store: In-memory Python dictionary 
+
+**Future Caching Strategy:**
 * Cache TTL: 30 days
 * Cache key: normalized test name (lowercase, stripped)
 * Cache store: Redis
 
 **Fallback Chain:**
 * Exact match against canonical list
-* Fuzzy match using rapidfuzz (token sort ratio)
+* Fuzzy match against synonyms (80% threshold)
+* Fuzzy match against canonical names (70% threshold)
+* Return error with message indicating test name could not be resolved
+
+**Future additions:**
 * LLM resolution (GPT-3.5 or local Llama)
-* Return error with suggestion
+* Redis for caching
 
 ### 3. Feature Pipeline
 
 Converts raw lab data into a fixed-dimension feature vector for the model.
 
 **Input Data Structure:**
+JSON Example
 ```
 {
   "patient_id": "P001",
+  "patient": {
+    "birth_year": 1975,
+    "sex": "F"
+  },
   "lab_history": [
-    {"date": "2024-01-15", "loinc": "718-7", "value": 12.1, "unit": "g/dL"},
-    {"date": "2024-06-20", "loinc": "718-7", "value": 11.4, "unit": "g/dL"}
+    {
+      "date": "2024-01-15",
+      "test_name": "hemoglobin",
+      "value": 12.1,
+      "unit": "g/dL",
+      "loinc_code": "718-7"
+    },
+    {
+      "date": "2024-06-20",
+      "test_name": "hemoglobin",
+      "value": 11.4,
+      "unit": "g/dL"
+    }
+  ]
+}
+```
+
+FHIR R4 bundle (US Core 6.1.0) Example
+```
+{
+  "resourceType": "Bundle",
+  "type": "collection",
+  "entry": [
+    {
+      "resource": {
+        "resourceType": "Patient",
+        "birthDate": "1975",
+        "gender": "female"
+      }
+    },
+    {
+      "resource": {
+        "resourceType": "DiagnosticReport",
+        "status": "final",
+        "category": [
+          {
+            "coding": [
+              {
+                "system": "http://terminology.hl7.org/CodeSystem/v2-0074",
+                "code": "LAB"
+              }
+            ]
+          }
+        ],
+        "code": {
+          "coding": [
+            {
+              "system": "http://loinc.org",
+              "code": "58410-2",
+              "display": "Complete blood count panel"
+            }
+          ]
+        },
+        "subject": {"reference": "urn:uuid:patient-1"},
+        "effectiveDateTime": "2024-06-20T08:30:00-04:00",
+        "result": [
+          {"reference": "urn:uuid:obs-hgb"},
+          {"reference": "urn:uuid:obs-mcv"}
+        ]
+      }
+    },
+    {
+      "resource": {
+        "resourceType": "Observation",
+        "id": "obs-hgb",
+        "status": "final",
+        "code": {
+          "coding": [
+            {
+              "system": "http://loinc.org",
+              "code": "718-7",
+              "display": "Hemoglobin"
+            }
+          ]
+        },
+        "valueQuantity": {
+          "value": 11.4,
+          "unit": "g/dL"
+        },
+        "effectiveDateTime": "2024-06-20T08:30:00-04:00"
+      }
+    },
+    {
+      "resource": {
+        "resourceType": "Observation",
+        "id": "obs-mcv",
+        "status": "final",
+        "code": {
+          "coding": [
+            {
+              "system": "http://loinc.org",
+              "code": "787-2",
+              "display": "MCV"
+            }
+          ]
+        },
+        "valueQuantity": {
+          "value": 70,
+          "unit": "fL"
+        },
+        "effectiveDateTime": "2024-06-20T08:30:00-04:00"
+      }
+    }
   ]
 }
 ```
 
 #### Feature Categories:
-| Category	| Features | Count |
-| --------  | -------- | ----- |
-|CBC Parameters |	Hemoglobin, MCV, MCH, RBC, RDW, platelets, WBC |	7|
-|Derived Indices |	Mentzer index, Green & King, England & Fraser	| 3|
-|Temporal Slopes |	3-month, 6-month, 12-month slopes for hemoglobin, MCV |	6|
-|Temporal Variability |	Standard deviation, coefficient of variation |	2|
-|Clinical Context |	Age, sex, pregnancy status |	3|
-|Missing Indicators |	Binary flags for each lab at each timepoint |	7|
-|Total Feature Vector | |	28-50 (varies by available data)|
 
-#### Derived Index Formulas:
+
+#### Current Implementation (v1.0)
+
+| Category | Features | Count |
+|----------|----------|-------|
+| CBC Parameters | Hemoglobin, MCV, RBC, RDW | 4 |
+| Derived Indices | Mentzer index | 1 |
+| Clinical Context | Age, sex | 2 |
+| **Total** | | **7** |
+
+#### Roadmap (v2.0 and beyond)
+
+| Category | Features | Count | Status |
+|----------|----------|-------|--------|
+| CBC Parameters | MCH, MCHC, platelets, WBC | 4 | Planned |
+| Derived Indices | Green & King, England & Fraser, Srivastava | 3 | Planned |
+| Temporal Slopes | 3/6/12-month slopes for Hb, MCV | 6 | Planned |
+| Temporal Variability | Standard deviation, CV | 2 | Planned |
+| Clinical Context | Pregnancy, medication flags | 2 | Considered |
+| Missing Indicators | Binary flags per lab per timepoint | Up to 7 | Considered |
+
+##### Derived Index Formulas:
 | Index |	Formula |	Clinical Use |
 | ----- | ------- | ------------ |
 |Mentzer Index |	MCV / RBC	<13  | suggests thalassemia trait|
@@ -128,28 +255,37 @@ Where 30.44 is average days per month.
 
 The core ML component. Runs XGBoost inference and anomaly detection.
 
-#### XGBoost Model:
-| Parameter | Value |	Rationale |
-| --------- | ----- | --------- |
-| Algorithm	| XGBoost 2.0+	| Best for tabular data, handles missing values| 
-| Task	| Multi-label classification	| One patient may have multiple conditions| 
-| Output	| Probability per condition (0 to 1)	| Calibrated via Platt scaling| 
-| Training data	| MIMIC-IV + NHANES |	Real-world ICU + outpatient| 
-| Features	| ~50 numeric features |	Derived from CBC and temporal analysis| 
-| Inference speed	| <100ms per request	| On t4g.small instance| 
+### Current Model (v1.0 - Demonstration)
 
-#### Anomaly Detection:
+| Parameter | Value |
+|-----------|-------|
+| Algorithm | DummyModel (rule-based) |
+| Features | 7 (Hb, MCV, RBC, RDW, Mentzer index, age, sex) |
+| Inference speed | <50ms |
+
+### Target Model (v2.0 - After MIMIC-IV)
+
+| Parameter | Value |
+|-----------|-------|
+| Algorithm | XGBoost 2.0+ |
+| Features | ~50 (CBC + temporal slopes + derived indices) |
+| Training data | MIMIC-IV + NHANES |
+| Inference speed | <100ms |
+
+
+
+#### Anomaly Detection (Future Planned Addition):
 * Algorithm: Isolation Forest
 * Contamination: 0.05 (expect 5% of patterns to be unusual)
 * Output: Anomaly score (0 to 1)
 * Threshold: >0.75 triggers "unrecognized pattern" flag
 
-#### Rare Disease Retriever (if anomaly flagged):
+#### Rare Disease Retriever ((Future Planned Addition)):
 * Method: k-Nearest Neighbors (k=3)
 * Search space: Case report database (PubMed Central)
 * Similarity metric: Cosine similarity on lab feature vectors
 
-### 5. Post-Processing
+### 5. Post-Processing (Post MIMIC-IV)
 
 Refines raw model outputs into clinically useful predictions.
 
