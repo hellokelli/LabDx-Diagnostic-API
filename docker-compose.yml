@@ -1,0 +1,18 @@
+version: '3.8'
+
+services:
+  labdx-api:
+    build: .
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./citations.json:/app/citations.json
+    restart: unless-stopped
+
+  labdx-frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.streamlit
+    ports:
+      - "8501:8501"
+    restart: unless-stopped
