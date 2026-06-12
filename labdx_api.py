@@ -5,7 +5,7 @@ import shap
 import json
 import os
 import re
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from pydantic import BaseModel, Field
 from typing import List, Optional
 import uuid
@@ -460,7 +460,7 @@ app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
     response_description="Health status with model loaded flag"
 )
 @limiter.limit("100/minute")
-def health_check():
+def health_check(request: Request):
     return {"status": "healthy", "model_loaded": True}
 
 @app.post(
@@ -485,7 +485,7 @@ def health_check():
     response_description="Ranked list of potential diagnoses with evidence"
 )
 @limiter.limit("100/minute")
-def diagnose(request: DiagnoseRequest):
+def diagnose(diagnose_request: DiagnoseRequest, request: Request):
     start_time = time.time()
     request_id = str(uuid.uuid4())[:8]
     
@@ -562,7 +562,7 @@ def diagnose(request: DiagnoseRequest):
     """
 )
 @limiter.limit("100/minute")
-def diagnose_from_fhir(bundle: FHIRBundle):
+def diagnose_from_fhir(bundle: FHIRBundle, request: Request):
     start_time = time.time()
     request_id = str(uuid.uuid4())[:8]
     
