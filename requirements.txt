@@ -10,3 +10,4 @@ matplotlib
 seaborn
 requests
 python-dotenv
+slowapi

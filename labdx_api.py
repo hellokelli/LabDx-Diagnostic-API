@@ -11,6 +11,9 @@ from typing import List, Optional
 import uuid
 import time
 from fuzzywuzzy import fuzz, process
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
 
 # ============================================
 # Load Citations Database
@@ -446,12 +449,17 @@ app = FastAPI(
     }
 )
 
+limiter = Limiter(key_func=get_remote_address)
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
 @app.get(
     "/health",
     summary="Health check endpoint",
-    description="Returns the health status of the API and confirms the model is loaded.",
+    description="Returns the health status of the API and confirms the model is loaded. Rate Limiting: 100 requests per minute per IP address.",
     response_description="Health status with model loaded flag"
 )
+@limiter.limit("100/minute")
 def health_check():
     return {"status": "healthy", "model_loaded": True}
 
@@ -468,12 +476,15 @@ def health_check():
     - Calculates derived indices (Mentzer index)
     - Resolves flexible test names ("hgb", "HGB", "hemoglobin")
 
+    Rate Limiting: 100 requests per minute per IP address.
+
     **Example use case:** A physician enters a patient's CBC results and receives
     probabilistic guidance on whether the pattern suggests thalassemia trait,
     iron deficiency, or normal findings.
     """,
     response_description="Ranked list of potential diagnoses with evidence"
 )
+@limiter.limit("100/minute")
 def diagnose(request: DiagnoseRequest):
     start_time = time.time()
     request_id = str(uuid.uuid4())[:8]
@@ -543,12 +554,14 @@ def diagnose(request: DiagnoseRequest):
     Accepts a FHIR R4 bundle (US Core 6.1.0 compliant) and returns diagnoses.
     This endpoint is designed for direct integration with EHR systems like Epic, Cerner, and Meditech.
 
+    Rate Limiting: 100 requests per minute per IP address.
     The bundle should contain:
     - Patient demographics (age, sex)
     - DiagnosticReport with category "LAB"
     - Observation resources with LOINC codes for CBC parameters
     """
 )
+@limiter.limit("100/minute")
 def diagnose_from_fhir(bundle: FHIRBundle):
     start_time = time.time()
     request_id = str(uuid.uuid4())[:8]
