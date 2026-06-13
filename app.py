@@ -5,12 +5,12 @@ import json
 # Page configuration
 st.set_page_config(
     page_title="LabDx Diagnostic API Demo",
-    page_icon="🩸",
+    page_icon="🔬",
     layout="wide"
 )
 
 # Title
-st.title("🩸 LabDx Diagnostic API Demo")
+st.title("🔬 LabDx Diagnostic API Demo")
 st.markdown("""
 This demo uses a machine learning API to analyze laboratory results and generate 
 a differential diagnosis with SHAP explanations and peer-reviewed citations.

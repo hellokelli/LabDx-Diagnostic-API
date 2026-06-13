@@ -490,7 +490,7 @@ def diagnose(diagnose_request: DiagnoseRequest, request: Request):
     request_id = str(uuid.uuid4())[:8]
     
     try:
-        resolved_labs = resolve_lab_results(request.lab_history)
+        resolved_labs = resolve_lab_results(diagnose_request.lab_history)
         X = extract_features(resolved_labs)
         proba = model.predict_proba(X)[0, 1]
         

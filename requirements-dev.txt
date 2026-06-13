@@ -1,0 +1,11 @@
+# Production dependencies
+-r requirements.txt
+
+# Development and testing dependencies
+pytest
+pytest-cov
+black
+isort
+flake8
+mypy
+jupyter
