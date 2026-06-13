@@ -1,9 +1,16 @@
 import pytest
+import os
 import json
 from fastapi.testclient import TestClient
 from labdx_api import app, resolve_test_name, extract_features, get_citations
+from dotenv import load_dotenv
+
+load_dotenv()
+API_KEY = os.getenv("LABDX_API_KEY", "test-key-for-ci")
 
 client = TestClient(app)
+
+AUTH_HEADERS = {"X-API-Key": API_KEY}
 
 # Test 1: Health check
 def test_health_check():
@@ -55,8 +62,51 @@ def test_diagnose_endpoint():
             {"date": "2024-06-20", "test_name": "MCV", "value": 70, "unit": "fL"}
         ]
     }
-    response = client.post("/diagnose", json=request)
+    response = client.post("/diagnose", json=request, headers=AUTH_HEADERS)
     assert response.status_code == 200
     data = response.json()
     assert "potential_diagnoses" in data
     assert len(data["potential_diagnoses"]) > 0
+
+# Test 8: Diagnose endpoint without auth (should fail)
+def test_diagnose_endpoint_no_auth():
+    request = {
+        "patient": {"birth_year": 1975, "sex": "F"},
+        "lab_history": [
+            {"date": "2024-06-20", "test_name": "hemoglobin", "value": 11.4, "unit": "g/dL"}
+        ]
+    }
+    response = client.post("/diagnose", json=request)  # No headers
+    assert response.status_code == 403
+    assert "Invalid API Key" in response.text
+
+# Test 9: Diagnose endpoint with wrong auth (should fail)
+def test_diagnose_endpoint_wrong_auth():
+    request = {
+        "patient": {"birth_year": 1975, "sex": "F"},
+        "lab_history": [
+            {"date": "2024-06-20", "test_name": "hemoglobin", "value": 11.4, "unit": "g/dL"}
+        ]
+    }
+    wrong_headers = {"X-API-Key": "wrong-key"}
+    response = client.post("/diagnose", json=request, headers=wrong_headers)
+    assert response.status_code == 403
+
+# Test 10: FHIR endpoint with auth
+def test_fhir_endpoint():
+    bundle = {
+        "resourceType": "Bundle",
+        "type": "collection",
+        "entry": [
+            {
+                "resource": {
+                    "resourceType": "Observation",
+                    "code": {"coding": [{"system": "http://loinc.org", "code": "718-7"}]},
+                    "valueQuantity": {"value": 11.4, "unit": "g/dL"},
+                    "effectiveDateTime": "2024-06-20"
+                }
+            }
+        ]
+    }
+    response = client.post("/diagnose/fhir", json=bundle, headers=AUTH_HEADERS)
+    assert response.status_code == 200
