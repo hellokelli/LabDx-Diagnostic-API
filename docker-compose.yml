@@ -5,6 +5,8 @@ services:
     build: .
     ports:
       - "8000:8000"
+    environment:
+      - LABDX_API_KEY=${LABDX_API_KEY}
     volumes:
       - ./citations.json:/app/citations.json
     restart: unless-stopped
@@ -15,4 +17,6 @@ services:
       dockerfile: Dockerfile.streamlit
     ports:
       - "8501:8501"
+    environment:
+      - LABDX_API_KEY=${LABDX_API_KEY}
     restart: unless-stopped

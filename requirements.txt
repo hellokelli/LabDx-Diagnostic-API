@@ -8,3 +8,4 @@ pydantic
 fuzzywuzzy
 python-Levenshtein
 slowapi
+python-dotenv

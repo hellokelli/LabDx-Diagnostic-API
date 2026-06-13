@@ -55,7 +55,7 @@ graph TD
     subgraph "Processing Layer"
         C --> C1{In Cache?}
         C1 -->|Yes| D[Feature Pipeline]
-        C1 -->|No| C2[LLM Resolver]
+        C1 -->|No| C2[Fuzzy Match]
         C2 --> D
     end
 
@@ -80,6 +80,22 @@ graph TD
     F3 --> G[JSON Response]
     G --> H[Client]
 ```
+---
+## Authentication
+
+The API uses API key authentication. All requests to protected endpoints must include the API key in the request header.
+
+### Getting an API Key
+
+For demonstration purposes, the API key is stored in a `.env` file. To run the API locally:
+
+1. Create a `.env` file in the project root
+2. Add your API key: `LABDX_API_KEY=your-api-key-here`
+3. The API will load the key automatically using `python-dotenv`
+
+### Making Authenticated Requests
+
+Include the API key in the `X-API-Key` header for all requests.
 ---
 
 ## Unit Tests

@@ -10,10 +10,33 @@ from pydantic import BaseModel, Field
 from typing import List, Optional
 import uuid
 import time
+from dotenv import load_dotenv
+import os
 from fuzzywuzzy import fuzz, process
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
+from fastapi.security import APIKeyHeader
+from fastapi import Security, HTTPException, status
+
+# ============================================
+# Authentication
+# ============================================
+load_dotenv()
+API_KEY = os.getenv("LABDX_API_KEY")
+if API_KEY is None:
+    raise ValueError("LABDX_API_KEY environment variable is not set. Check your .env file.")
+API_KEY_NAME = "X-API-Key"
+
+api_key_header = APIKeyHeader(name=API_KEY_NAME, auto_error=False)
+
+async def verify_api_key(api_key: str = Security(api_key_header)):
+    if api_key != API_KEY:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Invalid API Key"
+        )
+    return api_key
 
 # ============================================
 # Load Citations Database
@@ -523,7 +546,7 @@ def health_check(request: Request):
     response_description="Ranked list of potential diagnoses with evidence"
 )
 @limiter.limit("100/minute")
-def diagnose(diagnose_request: DiagnoseRequest, request: Request):
+def diagnose(diagnose_request: DiagnoseRequest, request: Request, api_key: str = Security(verify_api_key)):
     start_time = time.time()
     request_id = str(uuid.uuid4())[:8]
     
@@ -600,7 +623,8 @@ def diagnose(diagnose_request: DiagnoseRequest, request: Request):
     """
 )
 @limiter.limit("100/minute")
-def diagnose_from_fhir(bundle: FHIRBundle, request: Request):
+def diagnose_from_fhir(bundle: FHIRBundle, request: Request, api_key: str = Security(verify_api_key)):
+
     start_time = time.time()
     request_id = str(uuid.uuid4())[:8]
     

@@ -1,6 +1,11 @@
 import streamlit as st
 import requests
 import json
+from dotenv import load_dotenv
+import os
+
+load_dotenv()
+API_KEY = os.getenv("LABDX_API_KEY")
 
 # Page configuration
 st.set_page_config(
@@ -46,9 +51,11 @@ if st.button("Run Diagnosis", type="primary"):
                 {"date": "2024-06-20", "test_name": "RDW", "value": rdw, "unit": "%"}
             ]
         }
+
+        headers = {"X-API-Key": API_KEY}
         
         try:
-            response = requests.post(api_url, json=request)
+            response = requests.post(api_url, json=request, headers=headers)
             
             if response.status_code == 200:
                 result = response.json()

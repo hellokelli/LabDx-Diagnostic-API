@@ -53,7 +53,7 @@ graph TD
 The entry point for all client requests. Handles authentication, rate limiting, and request validation.
 | Component	| Purpose | Implementation |
 | --------- | ------- | -------------- |
-| Authentication | 	Verify API key and JWT token | 	Not implemented on Demo| 
+| Authentication | 	Verify API key | 	FastAPI | 
 | Rate Limiting | Prevent abuse and ensure fair usage	| 100 requests per minute per API key| 
 | Request Validation	| Validate JSON schema against Pydantic models	| FastAPI + Pydantic| 
 
@@ -221,20 +221,9 @@ FHIR R4 bundle (US Core 6.1.0) Example
 | Category | Features | Count |
 |----------|----------|-------|
 | CBC Parameters | Hemoglobin, MCV, RBC, RDW | 4 |
-| Derived Indices | Mentzer index | 1 |
+| Derived Indices | Mentzer index, Green & King, England & Fraser, Srivastava index| 4 |
 | Clinical Context | Age, sex | 2 |
-| **Total** | | **7** |
-
-#### Roadmap (v2.0 and beyond)
-
-| Category | Features | Count | Status |
-|----------|----------|-------|--------|
-| CBC Parameters | MCH, MCHC, platelets, WBC | 4 | Planned |
-| Derived Indices | Green & King, England & Fraser, Srivastava | 3 | Planned |
-| Temporal Slopes | 3/6/12-month slopes for Hb, MCV | 6 | Planned |
-| Temporal Variability | Standard deviation, CV | 2 | Planned |
-| Clinical Context | Pregnancy, medication flags | 2 | Considered |
-| Missing Indicators | Binary flags per lab per timepoint | Up to 7 | Considered |
+| **Total** | | **10** |
 
 ##### Derived Index Formulas:
 | Index |	Formula |	Clinical Use |
@@ -242,6 +231,18 @@ FHIR R4 bundle (US Core 6.1.0) Example
 |Mentzer Index |	MCV / RBC	<13  | suggests thalassemia trait|
 |Green & King Index |	(MCV^2 * RDW) / (Hb * 100) |	Elevated in iron deficiency|
 |England & Fraser Index |	MCV - RBC - (5 * Hb) - 8.4	>0 | suggests thalassemia trait|
+
+#### Roadmap (v2.0 and beyond)
+
+| Category | Features | Count | Status |
+|----------|----------|-------|--------|
+| CBC Parameters | MCH, MCHC, platelets, WBC | 4 | Planned |
+| Temporal Slopes | 3/6/12-month slopes for Hb, MCV | 6 | Planned |
+| Temporal Variability | Standard deviation, CV | 2 | Planned |
+| Clinical Context | Pregnancy, medication flags | 2 | Considered |
+| Missing Indicators | Binary flags per lab per timepoint | Up to 7 | Considered |
+
+
 
 **Temporal Feature Calculation:**
 
@@ -260,7 +261,7 @@ The core ML component. Runs XGBoost inference and anomaly detection.
 | Parameter | Value |
 |-----------|-------|
 | Algorithm | DummyModel (rule-based) |
-| Features | 7 (Hb, MCV, RBC, RDW, Mentzer index, age, sex) |
+| Features | 10 (Hb, MCV, RBC, RDW, Mentzer index, age, sex) |
 | Inference speed | <50ms |
 
 ### Target Model (v2.0 - After MIMIC-IV)
@@ -268,7 +269,7 @@ The core ML component. Runs XGBoost inference and anomaly detection.
 | Parameter | Value |
 |-----------|-------|
 | Algorithm | XGBoost 2.0+ |
-| Features | ~50 (CBC + temporal slopes + derived indices) |
+| Features | ~30 (CBC + temporal slopes + derived indices) |
 | Training data | MIMIC-IV + NHANES |
 | Inference speed | <100ms |
 
