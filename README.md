@@ -1,3 +1,4 @@
+[![Run Unit Tests](https://github.com/hellokelli/LabDx-Diagnostic-API/actions/workflows/test.yml/badge.svg)](https://github.com/hellokelli/LabDx-Diagnostic-API/actions/workflows/test.yml)
 # LabDx: Diagnostic API for Hemoglobinopathy Detection
 
 LabDx is a proof-of-concept diagnostic API that analyzes longitudinal laboratory results and returns a ranked differential diagnosis with confidence scores, SHAP feature attribution, and peer-reviewed citations. This repository demonstrates the architecture, feature engineering pipeline, and public data training examples for a hemoglobinopathy detection model.
@@ -78,3 +79,20 @@ graph TD
 
     F3 --> G[JSON Response]
     G --> H[Client]
+```
+---
+
+## Unit Tests
+
+This project includes unit tests for the test name resolver, feature extraction, citation lookup, and API endpoints.
+
+### Install Development Dependencies
+
+```bash
+pip install -r requirements-dev.txt
+```
+### Run All Tests
+
+```bash
+pytest test_labdx.py -v
+```

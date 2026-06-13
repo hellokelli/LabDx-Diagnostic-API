@@ -40,31 +40,31 @@ def get_citations(icd10_code: str) -> List[dict]:
 CANONICAL_TESTS = {
     "hemoglobin": {
         "loinc": "718-7",
-        "synonyms": ["hgb", "hb", "hemoglobin", "haemoglobin", "blood hemoglobin"]
+        "synonyms": ["hgb", "hb", "hemoglobin", "haemoglobin", "blood hemoglobin", "hemoglobin level", "hgb count"]
     },
     "mcv": {
         "loinc": "787-2",
-        "synonyms": ["mcv", "mean corpuscular volume", "mean cell volume"]
+        "synonyms": ["mcv", "mean corpuscular volume", "mean cell volume", "mean corpuscular volume mcv", "mcv blood"]
     },
     "mch": {
         "loinc": "785-6",
-        "synonyms": ["mch", "mean corpuscular hemoglobin", "mean cell hemoglobin"]
+        "synonyms": ["mch", "mean corpuscular hemoglobin", "mean cell hemoglobin", "mean corpuscular hemoglobin mch"]
     },
     "rbc": {
         "loinc": "789-8",
-        "synonyms": ["rbc", "red blood cell count", "red cell count", "erythrocyte count"]
+        "synonyms": ["rbc", "red blood cell count", "red cell count", "erythrocyte count", "rbc count", "red blood cells"]
     },
     "rdw": {
         "loinc": "788-0",
-        "synonyms": ["rdw", "red cell distribution width", "rdw-cv"]
+        "synonyms": ["rdw", "red cell distribution width", "rdw-cv", "rdw cv", "red blood cell distribution width"]
     },
     "platelets": {
         "loinc": "777-3",
-        "synonyms": ["platelets", "plt", "platelet count", "thrombocyte count"]
+        "synonyms": ["platelets", "plt", "platelet count", "thrombocyte count", "plt count"]
     },
     "wbc": {
         "loinc": "6690-2",
-        "synonyms": ["wbc", "white blood cell count", "leukocyte count"]
+        "synonyms": ["wbc", "white blood cell count", "leukocyte count", "wbc count", "white blood cells"]
     }
 }
 
@@ -244,12 +244,42 @@ def extract_features(lab_history):
         elif test_name in ["rdw", "red cell distribution width"]:
             features["rdw"] = lab.value
     
+    # Mentzer index (MCV / RBC) 
     if "mcv" in features and "rbc" in features and features["rbc"] > 0:
         features["mentzer_index"] = features["mcv"] / features["rbc"]
     else:
         features["mentzer_index"] = 0
+
+    # Green and King index ((MCV^2 * RDW) / (Hb * 100))
+    if "mcv" in features and "rdw" in features and "hemoglobin" in features and features["hemoglobin"] > 0:
+        features["green_king_index"] = (features["mcv"] ** 2 * features["rdw"]) / (features["hemoglobin"] * 100)
+    else:
+        features["green_king_index"] = 0
+
+    # England and Fraser index (MCV - RBC - (5 * Hb) - 8.4)
+    if "mcv" in features and "rbc" in features and "hemoglobin" in features:
+        features["england_fraser_index"] = features["mcv"] - features["rbc"] - (5 * features["hemoglobin"]) - 8.4
+    else:
+        features["england_fraser_index"] = 0
     
-    default_features = {"hemoglobin": 13.0, "mcv": 90, "rdw": 13.5, "mentzer_index": 15}
+    # Srivastava index (MCH / RBC)
+    if "mch" in features and "rbc" in features and features["rbc"] > 0:
+        features["srivastava_index"] = features["mch"] / features["rbc"]
+    else:
+        features["srivastava_index"] = 0
+    
+    default_features = {
+        "hemoglobin": 13.0,
+        "mcv": 90,
+        "mch": 30,
+        "rbc": 4.8,
+        "rdw": 13.5,
+        "mentzer_index": 15,
+        "green_king_index": 70,
+        "england_fraser_index": 2,
+        "srivastava_index": 6.25,
+        "rdw_cv": 13.5
+    }
     for key, default in default_features.items():
         if key not in features:
             features[key] = default
@@ -269,21 +299,24 @@ class DummyExplainer:
             hgb = X.iloc[0].get("hemoglobin", 13.0)
             mcv = X.iloc[0].get("mcv", 90.0)
             mentzer = X.iloc[0].get("mentzer_index", 15.0)
+            green_king = X.iloc[0].get("green_king_index", 70.0)
             
             shap_vals = []
             for col in self.feature_names:
                 if col == "hemoglobin" and hgb < 12:
-                    shap_vals.append(0.25)
+                    shap_vals.append(0.20)
                 elif col == "hemoglobin" and hgb >= 12:
                     shap_vals.append(-0.10)
                 elif col == "mcv" and mcv < 80:
-                    shap_vals.append(0.35)
+                    shap_vals.append(0.30)
                 elif col == "mcv" and mcv >= 80:
                     shap_vals.append(-0.15)
                 elif col == "mentzer_index" and mentzer < 13:
-                    shap_vals.append(0.30)
+                    shap_vals.append(0.25)
                 elif col == "mentzer_index" and mentzer >= 13:
                     shap_vals.append(-0.05)
+                elif col == "green_king_index" and green_king < 60:
+                    shap_vals.append(0.15)
                 else:
                     shap_vals.append(0.0)
             
@@ -291,7 +324,9 @@ class DummyExplainer:
         
         return np.zeros((1, len(self.feature_names)))
 
-feature_names = ["hemoglobin", "mcv", "rdw", "mentzer_index"]
+feature_names = ["hemoglobin", "mcv", "mch", "rbc", "rdw", 
+                 "mentzer_index", "green_king_index", "england_fraser_index", 
+                 "srivastava_index", "rdw_cv"]
 
 # ============================================
 # Dummy Model with SHAP
@@ -306,14 +341,17 @@ class DummyModel:
         hgb = X.iloc[0].get("hemoglobin", 13.0)
         mcv = X.iloc[0].get("mcv", 90.0)
         mentzer = X.iloc[0].get("mentzer_index", 15.0)
+        green_king = X.iloc[0].get("green_king_index", 70.0)
         
         score = 0.0
         if hgb < 12:
-            score += 0.3
+            score += 0.25
         if mcv < 80:
-            score += 0.4
+            score += 0.35
         if mentzer < 13:
-            score += 0.3
+            score += 0.25
+        if green_king < 60:
+            score += 0.15
         
         proba = min(score, 0.95)
         
