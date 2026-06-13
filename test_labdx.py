@@ -110,3 +110,33 @@ def test_fhir_endpoint():
     }
     response = client.post("/diagnose/fhir", json=bundle, headers=AUTH_HEADERS)
     assert response.status_code == 200
+
+# Test 11: Test unit normalization for hbg
+def test_unit_normalization_hemoglobin():
+    from labdx_api import validate_and_normalize_units
+    
+    # g/dL is standard, no change
+    val, err = validate_and_normalize_units(11.4, "g/dL", "hemoglobin")
+    assert err is None
+    assert val == 11.4
+    
+    # g/L converts to g/dL
+    val, err = validate_and_normalize_units(114, "g/L", "hemoglobin")
+    assert err is None
+    assert val == 11.4
+    
+    # Unsupported unit
+    val, err = validate_and_normalize_units(11.4, "mg/dL", "hemoglobin")
+    assert err is not None
+
+# Test 12: Test unit normalization for mcv
+def test_unit_normalization_mcv():
+    from labdx_api import validate_and_normalize_units
+    
+    val, err = validate_and_normalize_units(70, "fL", "mcv")
+    assert err is None
+    assert val == 70
+    
+    val, err = validate_and_normalize_units(70, "um^3", "mcv")
+    assert err is None
+    assert val == 70

@@ -57,6 +57,66 @@ def get_citations(icd10_code: str) -> List[dict]:
     return []
 
 # ============================================
+# Unit Definitions and Normalization
+# ============================================
+
+EXPECTED_UNITS = {
+    "hemoglobin": {
+        "standard": "g/dL",
+        "aliases": ["g/dl", "gram/deciliter"],
+        "normalizable": [
+            {"unit": "g/L", "factor": 0.1},
+            {"unit": "gram/liter", "factor": 0.1}
+        ]
+    },
+    "mcv": {
+        "standard": "fL",
+        "aliases": ["fl", "fl"],
+        "normalizable": [
+            {"unit": "um^3", "factor": 1.0},
+            {"unit": "cubic micrometer", "factor": 1.0}
+        ]
+    },
+    "rbc": {
+        "standard": "million/uL",
+        "aliases": ["million/ul", "x10^6/ul", "10^6/ul"],
+        "normalizable": [
+            {"unit": "x10^12/L", "factor": 1.0},
+            {"unit": "10^12/L", "factor": 1.0}
+        ]
+    },
+    "rdw": {
+        "standard": "%",
+        "aliases": ["percent", "percentage"],
+        "normalizable": []
+    }
+}
+
+def validate_and_normalize_units(value: float, unit: str, canonical_test_name: str) -> tuple:
+    """
+    Validate units and normalize to standard.
+    Returns (normalized_value, error_message)
+    If error_message is not None, the input is invalid.
+    """
+    test_config = EXPECTED_UNITS.get(canonical_test_name)
+    if not test_config:
+        return None, f"Unknown test: {canonical_test_name}"
+    
+    unit_lower = unit.lower().strip()
+    
+    # Check if unit matches standard or alias
+    if unit_lower == test_config["standard"].lower() or unit_lower in [a.lower() for a in test_config["aliases"]]:
+        return value, None
+    
+    # Try normalization
+    for norm in test_config.get("normalizable", []):
+        if unit_lower == norm["unit"].lower():
+            normalized = value * norm["factor"]
+            return normalized, None
+    
+    return None, f"Unsupported unit '{unit}' for {canonical_test_name}. Expected {test_config['standard']}"
+
+# ============================================
 # Test Name Resolver
 # ============================================
 
@@ -154,22 +214,42 @@ def resolve_test_name(raw_name: str) -> dict:
     RESOLVER_CACHE[normalized] = result
     return result
 
-def resolve_lab_results(lab_results):
+def resolve_and_normalize_lab_results(lab_results):
+    """
+    Resolve test names and normalize units.
+    Returns (resolved_labs, errors)
+    """
     resolved = []
+    errors = []
+
     for lab in lab_results:
         if lab.loinc_code:
+            canonical_test_name = lab.test_name 
             resolved.append(lab)
-        else:
-            resolution = resolve_test_name(lab.test_name)
-            if resolution["canonical"]:
-                from copy import copy
-                resolved_lab = copy(lab)
-                resolved_lab.test_name = resolution["canonical"]
-                resolved_lab.loinc_code = resolution["loinc"]
-                resolved.append(resolved_lab)
-            else:
-                print(f"Warning: Could not resolve test name: {lab.test_name}")
-    return resolved
+            continue
+        resolution = resolve_test_name(lab.test_name)
+        if not resolution["canonical"]:
+            errors.append(f"Could not resolve test name: {lab.test_name}")
+            continue
+
+        normalized_value, unit_error = validate_and_normalize_units(
+            lab.value, lab.unit, resolution["canonical"]
+        )
+
+        if unit_error:
+            errors.append(unit_error)
+            continue
+
+        from copy import copy
+        normalized_lab = copy(lab)
+        normalized_lab.test_name = resolution["canonical"]
+        normalized_lab.loinc_code = resolution["loinc"]
+        normalized_lab.value = normalized_value
+        normalized_lab.unit = EXPECTED_UNITS[resolution["canonical"]]["standard"]
+        
+        resolved.append(normalized_lab)
+    
+    return resolved, errors
 
 # ============================================
 # Pydantic Models for Native JSON API
@@ -547,11 +627,18 @@ def health_check(request: Request):
 )
 @limiter.limit("100/minute")
 def diagnose(diagnose_request: DiagnoseRequest, request: Request, api_key: str = Security(verify_api_key)):
+    errors = [] 
     start_time = time.time()
     request_id = str(uuid.uuid4())[:8]
     
     try:
-        resolved_labs = resolve_lab_results(diagnose_request.lab_history)
+        resolved_labs, errors = resolve_and_normalize_lab_results(diagnose_request.lab_history)
+        if errors:
+            raise HTTPException(status_code=400, detail=f"Unit validation errors: {'; '.join(errors)}")
+        
+        if len(resolved_labs) == 0:
+            raise HTTPException(status_code=400, detail="No valid lab results after resolution and normalization")
+
         X = extract_features(resolved_labs)
         proba = model.predict_proba(X)[0, 1]
         
