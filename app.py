@@ -35,8 +35,26 @@ rdw = st.sidebar.number_input("RDW (%)", value=13.5, step=0.1)
 # API endpoint
 api_url = st.text_input("API URL", value="http://localhost:8000/diagnose")
 
+#Input
+form = st.container(border=True)
+
+pt_form_inner = form.container()
+col1, col2 = pt_form_inner.columns(2)
+col1.subheader("Patient Information")
+birth_year = col1.slider("Birth Year", min_value=1900, max_value=2026, value=1975)
+sex = col1.selectbox("Sex", ["Female", "Male"])
+col1.space(size="large")
+
+col2.subheader("Laboratory Results")
+#lr_form_inner = form.container()
+#col3, col4 = lr_form_inner.columns(2)
+hemoglobin = col2.slider("Hemoglobin (g/dL)", value=11.4, min_value=0.0, max_value=20.0)
+mcv = col2.slider("MCV (fL)", value=70.0, min_value=0.0, max_value=120.0)
+rbc = col2.slider("RBC (million/uL)", value=5.2, min_value=0.0, max_value=10.0)
+rdw = col2.slider("RDW (%)", value=13.5, min_value=0.0, max_value=20.0)
+
 # Submit button
-if st.button("Run Diagnosis", type="primary"):
+if col1.button("Run Diagnosis", type="primary"):
     with st.spinner("Calling API..."):
         # Prepare request
         request = {
@@ -87,7 +105,7 @@ if st.button("Run Diagnosis", type="primary"):
                             for cite in diag['citations']:
                                 st.markdown(f"- {cite['reference']}")
                                 if cite.get('doi'):
-                                    st.markdown(f"  DOI: {cite['doi']}")
+                                    st.markdown(f"  DOI: http://doi.org/{cite['doi']}")
                                 if cite.get('key_findings'):
                                     st.markdown(f"  *{cite['key_findings']}*")
             else:

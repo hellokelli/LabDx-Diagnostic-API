@@ -1,5 +1,8 @@
-[![Run Unit Tests](https://github.com/hellokelli/LabDx-Diagnostic-API/actions/workflows/test.yml/badge.svg)](https://github.com/hellokelli/LabDx-Diagnostic-API/actions/workflows/test.yml)
-# LabDx: Diagnostic API for Hemoglobinopathy Detection
+![Run Unit Tests](https://github.com/hellokelli/LabDx-Diagnostic-API/actions/workflows/test.yml/badge.svg)
+![Static Badge](https://img.shields.io/badge/coverage-88%25-green)
+![Static Badge](https://img.shields.io/badge/docs-80%25-green)
+
+# 🔬 LabDx: Diagnostic API for Hemoglobinopathy Detection
 
 LabDx is a proof-of-concept diagnostic API that analyzes longitudinal laboratory results and returns a ranked differential diagnosis with confidence scores, SHAP feature attribution, and peer-reviewed citations. This repository demonstrates the architecture, feature engineering pipeline, and public data training examples for a hemoglobinopathy detection model.
 
@@ -7,7 +10,7 @@ LabDx is a proof-of-concept diagnostic API that analyzes longitudinal laboratory
 
 ---
 
-## Problem Statement
+## 🚩 Problem Statement
 
 Physicians have more laboratory data than ever, yet diagnostic delays remain common. Medical errors account for 251,000 deaths annually. Existing clinical decision support tools require symptoms or suspected diagnoses as input. None work from laboratory data alone or analyze longitudinal trends.
 
@@ -15,7 +18,7 @@ This API addresses that gap by synthesizing existing lab data to reveal diagnost
 
 ---
 
-## Vision: Connecting Disconnected Dots
+## 🎯 Vision: Connecting Disconnected Dots
 
 "No one is talking. The giant is suffering. And no one even notices, because they are all too busy managing their own small piece of the rope." -Jonathan Swift
 
@@ -29,7 +32,7 @@ This API starts with hemoglobinopathies. However, the architecture is designed t
 
 ---
 
-## What This API Does
+## 🧩 What This API Does
 
 | Feature | Description |
 |---------|-------------|
@@ -42,7 +45,7 @@ This API starts with hemoglobinopathies. However, the architecture is designed t
 
 ---
 
-## Target Conditions (Pilot Scope)
+## 🧬 Target Conditions (Pilot Scope)
 
 | Condition | Prevalence | Key Lab Markers |
 |-----------|------------|-----------------|
@@ -53,7 +56,28 @@ This API starts with hemoglobinopathies. However, the architecture is designed t
 
 ---
 
-## Technical Architecture
+## Success Metrics (Pilot)
+
+The pilot phase targets hemoglobinopathies (beta-thalassemia trait, sickle cell disease/trait, HbE trait, and iron deficiency anemia). Success is defined by the following quantifiable metrics:
+
+### Model Performance
+
+| Metric | Target | Measurement |
+|--------|--------|-------------|
+| AUC (common conditions) | >0.90 | Area under ROC curve for beta-thalassemia and sickle cell |
+| AUC (rare variants) | >0.85 | Area under ROC curve for HbE trait |
+| Calibration slope | 0.8 - 1.2 | Calibration curve slope (ideal = 1.0) |
+| Calibration intercept | <0.1 | Calibration curve intercept (ideal = 0) |
+| External validation drop | <15% | Performance drop from internal to external validation |
+| Net benefit at 10% threshold | >0.02 | Decision curve analysis net benefit |
+
+### Go/No-Go Decision
+
+Proceed to Phase 2 (expansion to additional hematologic conditions) only if ALL model performance metrics meet or exceed minimum acceptable thresholds. See [Roadmap](docs/roadmap.md)
+
+If metrics not met, publish negative results and pivot to alternative architecture or different initial condition.
+
+## 🏗 Technical Architecture
 
 ```mermaid
 graph TD
@@ -95,7 +119,7 @@ graph TD
     G --> H[Client]
 ```
 ---
-## Authentication
+## 🔐 Authentication
 
 The API uses API key authentication. All requests to protected endpoints must include the API key in the request header.
 
@@ -112,7 +136,7 @@ For demonstration purposes, the API key is stored in a `.env` file. To run the A
 Include the API key in the `X-API-Key` header for all requests.
 ---
 
-## Unit Tests
+## 🥽 Unit Tests
 
 This project includes unit tests for the test name resolver, feature extraction, citation lookup, and API endpoints.
 
