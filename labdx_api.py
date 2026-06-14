@@ -336,40 +336,61 @@ class FHIRBundle(BaseModel):
 
 def extract_features(lab_history):
     features = {}
+    missing_flags = {}
+    
+    tests_found = {
+        "hemoglobin": False,
+        "mcv": False,
+        "mch": False,
+        "rbc": False,
+        "rdw": False
+    }
+
     for lab in lab_history:
         test_name = lab.test_name.lower()
         if test_name in ["hemoglobin", "hgb", "hb"]:
             features["hemoglobin"] = lab.value
+            tests_found["hemoglobin"] = True
         elif test_name in ["mcv", "mean corpuscular volume"]:
             features["mcv"] = lab.value
+            tests_found["mcv"] = True
         elif test_name in ["rbc", "red blood cell count"]:
             features["rbc"] = lab.value
+            tests_found["rbc"] = True
         elif test_name in ["rdw", "red cell distribution width"]:
             features["rdw"] = lab.value
+            tests_found["rdw"] = True
+    
+    for test_name in tests_found:
+        missing_flags[f"{test_name}_missing"] = 0 if tests_found[test_name] else 1
     
     # Mentzer index (MCV / RBC) 
-    if "mcv" in features and "rbc" in features and features["rbc"] > 0:
+    if tests_found["mcv"] and tests_found["rbc"] and features.get("rbc", 0) > 0:
         features["mentzer_index"] = features["mcv"] / features["rbc"]
     else:
         features["mentzer_index"] = 0
+        missing_flags["mentzer_index_missing"] = 1
 
     # Green and King index ((MCV^2 * RDW) / (Hb * 100))
-    if "mcv" in features and "rdw" in features and "hemoglobin" in features and features["hemoglobin"] > 0:
+    if tests_found["mcv"] and tests_found["rdw"] and tests_found["hemoglobin"]:
         features["green_king_index"] = (features["mcv"] ** 2 * features["rdw"]) / (features["hemoglobin"] * 100)
     else:
         features["green_king_index"] = 0
+        missing_flags["green_king_index_missing"] = 1
 
     # England and Fraser index (MCV - RBC - (5 * Hb) - 8.4)
-    if "mcv" in features and "rbc" in features and "hemoglobin" in features:
+    if tests_found["mcv"] and tests_found["rbc"] and tests_found["hemoglobin"]:
         features["england_fraser_index"] = features["mcv"] - features["rbc"] - (5 * features["hemoglobin"]) - 8.4
     else:
         features["england_fraser_index"] = 0
+        missing_flags["england_fraser_index_missing"] = 1
     
     # Srivastava index (MCH / RBC)
-    if "mch" in features and "rbc" in features and features["rbc"] > 0:
+    if tests_found["mch"] and tests_found["rbc"] and features.get("rbc", 0) > 0:
         features["srivastava_index"] = features["mch"] / features["rbc"]
     else:
         features["srivastava_index"] = 0
+        missing_flags["srivastava_index_missing"] = 1
     
     default_features = {
         "hemoglobin": 13.0,
@@ -386,6 +407,8 @@ def extract_features(lab_history):
     for key, default in default_features.items():
         if key not in features:
             features[key] = default
+   
+    features.update(missing_flags)
     
     return pd.DataFrame([features])
 
@@ -403,6 +426,8 @@ class DummyExplainer:
             mcv = X.iloc[0].get("mcv", 90.0)
             mentzer = X.iloc[0].get("mentzer_index", 15.0)
             green_king = X.iloc[0].get("green_king_index", 70.0)
+            hgb_missing = X.iloc[0].get("hemoglobin_missing", 1)
+            mcv_missing = X.iloc[0].get("mcv_missing", 1)
             
             shap_vals = []
             for col in self.feature_names:
@@ -413,6 +438,10 @@ class DummyExplainer:
                 elif col == "mcv" and mcv < 80:
                     shap_vals.append(0.30)
                 elif col == "mcv" and mcv >= 80:
+                    shap_vals.append(-0.15)
+                elif col == "hemoglobin_missing" and hgb_missing:
+                    shap_vals.append(-0.15)
+                elif col == "mcv_missing" and mcv_missing:
                     shap_vals.append(-0.15)
                 elif col == "mentzer_index" and mentzer < 13:
                     shap_vals.append(0.25)
@@ -427,9 +456,13 @@ class DummyExplainer:
         
         return np.zeros((1, len(self.feature_names)))
 
-feature_names = ["hemoglobin", "mcv", "mch", "rbc", "rdw", 
-                 "mentzer_index", "green_king_index", "england_fraser_index", 
-                 "srivastava_index", "rdw_cv"]
+feature_names = [
+    "hemoglobin", "mcv", "mch", "rbc", "rdw",
+    "mentzer_index", "green_king_index", "england_fraser_index", "srivastava_index",
+    "hemoglobin_missing", "mcv_missing", "mch_missing", "rbc_missing", "rdw_missing",
+    "mentzer_index_missing", "green_king_index_missing", "england_fraser_index_missing", "srivastava_index_missing",
+    "age_years", "sex_numeric"
+]
 
 # ============================================
 # Dummy Model with SHAP
@@ -446,6 +479,10 @@ class DummyModel:
         mentzer = X.iloc[0].get("mentzer_index", 15.0)
         green_king = X.iloc[0].get("green_king_index", 70.0)
         
+        # Check missing flags - if key features are missing, reduce confidence
+        hgb_missing = X.iloc[0].get("hemoglobin_missing", 1)
+        mcv_missing = X.iloc[0].get("mcv_missing", 1)
+
         score = 0.0
         if hgb < 12:
             score += 0.25
@@ -456,6 +493,10 @@ class DummyModel:
         if green_king < 60:
             score += 0.15
         
+        # Reduce confidence if key features are missing
+        if hgb_missing or mcv_missing:
+            score = score * 0.7
+
         proba = min(score, 0.95)
         
         return np.array([[1 - proba, proba]])

@@ -131,6 +131,17 @@ The following features are planned for future versions:
 
 Features are currently used raw (not normalized). Age-adjusted and sex-adjusted normalization is planned for future versions.
 
+## Missing Data Indicators
+
+Binary flags indicating whether a specific lab value was available at a given timepoint. These help the model distinguish between a normal value and a missing value.
+
+| Feature | Format | Description |
+|---------|--------|-------------|
+| hgb_missing | 0 or 1 | 1 if hemoglobin was not measured |
+| mcv_missing | 0 or 1 | 1 if MCV was not measured |
+| rbc_missing | 0 or 1 | 1 if RBC count was not measured |
+| rdw_missing | 0 or 1 | 1 if RDW was not measured |
+
 ## Version History
 
 | Version | Date | Changes |
@@ -168,18 +179,6 @@ These features capture changes in lab values over time. They require at least tw
 | mcv_current | Most recent MCV | Current status for treatment monitoring |
 | mcv_slope_6m | Slope over 6 months | Increasing MCV suggests B12 or folate deficiency |
 | mcv_slope_12m | Slope over 12 months | Decreasing MCV suggests iron deficiency or thalassemia |
-
-## Missing Data Indicators
-
-Binary flags indicating whether a specific lab value was available at a given timepoint. These help the model distinguish between a normal value and a missing value.
-
-| Feature | Format | Description |
-|---------|--------|-------------|
-| hgb_missing | 0 or 1 | 1 if hemoglobin was not measured |
-| mcv_missing | 0 or 1 | 1 if MCV was not measured |
-| rbc_missing | 0 or 1 | 1 if RBC count was not measured |
-| rdw_missing | 0 or 1 | 1 if RDW was not measured |
-| platelet_missing | 0 or 1 | 1 if platelet count was not measured |
 
 ## Feature Vector Format
 
