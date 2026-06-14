@@ -15,6 +15,20 @@ This API addresses that gap by synthesizing existing lab data to reveal diagnost
 
 ---
 
+## Vision: Connecting Disconnected Dots
+
+"No one is talking. The giant is suffering. And no one even notices, because they are all too busy managing their own small piece of the rope." -Jonathan Swift
+
+Healthcare  has become entrapped in the twine of isolated specialists. Much like Swift's giant, the rheumatologists have ensnared the hands in a treatment that pulls at the stomach, while the head is restricted by the neurologist that can't see the feet.
+
+Finding a physician that is multi-disciplinary is extremely rare, and even then, it is difficult for one person to know all the ways the body is connected.
+
+This project is motivated by a lifetime of experiencing the healthcare disconnect. From being misdiagnosed with leukemia at 7, chronic pain that started at 14, unexplained recurrent miscarriages at 37, to the final long overdue diagnosis at 42. Healthcare has failed many, but maybe it doesn't have to fail our future?
+
+This API starts with hemoglobinopathies. However, the architecture is designed to build and recognize patterns across specialties and to see the signals hidden in the noise and weave the dots that so often go unconnected.
+
+---
+
 ## What This API Does
 
 | Feature | Description |
