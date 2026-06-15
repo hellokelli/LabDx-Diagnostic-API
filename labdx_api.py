@@ -413,98 +413,92 @@ def extract_features(lab_history):
     return pd.DataFrame([features])
 
 # ============================================
-# SHAP Explainer Setup (Dummy for now)
+# XGBoost Model with SHAP
 # ============================================
 
-class DummyExplainer:
-    def __init__(self, feature_names):
-        self.feature_names = feature_names
-    
-    def shap_values(self, X):
-        if X is not None:
-            hgb = X.iloc[0].get("hemoglobin", 13.0)
-            mcv = X.iloc[0].get("mcv", 90.0)
-            mentzer = X.iloc[0].get("mentzer_index", 15.0)
-            green_king = X.iloc[0].get("green_king_index", 70.0)
-            hgb_missing = X.iloc[0].get("hemoglobin_missing", 1)
-            mcv_missing = X.iloc[0].get("mcv_missing", 1)
-            
-            shap_vals = []
-            for col in self.feature_names:
-                if col == "hemoglobin" and hgb < 12:
-                    shap_vals.append(0.20)
-                elif col == "hemoglobin" and hgb >= 12:
-                    shap_vals.append(-0.10)
-                elif col == "mcv" and mcv < 80:
-                    shap_vals.append(0.30)
-                elif col == "mcv" and mcv >= 80:
-                    shap_vals.append(-0.15)
-                elif col == "hemoglobin_missing" and hgb_missing:
-                    shap_vals.append(-0.15)
-                elif col == "mcv_missing" and mcv_missing:
-                    shap_vals.append(-0.15)
-                elif col == "mentzer_index" and mentzer < 13:
-                    shap_vals.append(0.25)
-                elif col == "mentzer_index" and mentzer >= 13:
-                    shap_vals.append(-0.05)
-                elif col == "green_king_index" and green_king < 60:
-                    shap_vals.append(0.15)
-                else:
-                    shap_vals.append(0.0)
-            
-            return np.array([shap_vals])
-        
-        return np.zeros((1, len(self.feature_names)))
+import xgboost as xgb
+import shap
+import pandas as pd
+import numpy as np
 
-feature_names = [
-    "hemoglobin", "mcv", "mch", "rbc", "rdw",
-    "mentzer_index", "green_king_index", "england_fraser_index", "srivastava_index",
-    "hemoglobin_missing", "mcv_missing", "mch_missing", "rbc_missing", "rdw_missing",
-    "mentzer_index_missing", "green_king_index_missing", "england_fraser_index_missing", "srivastava_index_missing",
-    "age_years", "sex_numeric"
-]
+class XGBoostModel:
+
+    def __init__(self, model_path, training_data_path=None):
+       # Load the .xgb model file
+        self.model = xgb.Booster()
+        self.model.load_model(model_path)
+        
+        # Verify model loaded
+        if self.model is None:
+            raise ValueError(f"Failed to load model from {model_path}")
+        
+        # Define feature mapping (from API column names to model column names)
+        self.feature_mapping = {
+            "hemoglobin": "Hemoglobin",
+            "mcv": "MCV",
+            "rbc": "RBC",
+            "rdw": "RDW",
+            "mentzer_index": "mentzer_index",
+            "green_king_index": "green_king_index",
+            "england_fraser_index": "england_fraser_index"
+        }
+        
+        # Define expected feature order
+        self.feature_order = ["Hemoglobin", "MCV", "RBC", "RDW", 
+                              "mentzer_index", "green_king_index", "england_fraser_index"]
+        
+        # Initialize SHAP explainer (if training data provided)
+        self.explainer = None
+        if training_data_path:
+            training_data = pd.read_csv(training_data_path)
+            self.explainer = shap.TreeExplainer(self.model, training_data[self.feature_order])
+    
+    def preprocess_features(self, features_df):
+        """Rename and select features to match model expectations"""
+        # Rename columns
+        renamed = features_df.rename(columns=self.feature_mapping)
+        # Select and order features
+        return renamed[self.feature_order]
+    
+    def predict_proba(self, features_df):
+        """Return probability for class 1 (thalassemia)"""
+        X_processed = self.preprocess_features(features_df)
+        dmatrix = xgb.DMatrix(X_processed)
+        proba = self.model.predict(dmatrix)[0]
+        return proba
+    
+    def get_shap_values(self, features_df):
+        """Return SHAP values for top features"""
+        if self.explainer is None:
+            return []
+        
+        X_processed = self.preprocess_features(features_df)
+        shap_values = self.explainer.shap_values(X_processed)
+        
+        contributions = []
+        for i, feature in enumerate(self.feature_order):
+            contributions.append({
+                "feature": feature,
+                "value": float(X_processed.iloc[0, i]),
+                "shap": float(shap_values[0][i])
+            })
+        
+        # Sort by absolute SHAP value and return top 5
+        contributions.sort(key=lambda x: abs(x["shap"]), reverse=True)
+        return contributions[:5]
 
 # ============================================
-# Dummy Model with SHAP
+# Initialize the Model
 # ============================================
 
-class DummyModel:
-    def __init__(self):
-        self.explainer = DummyExplainer(feature_names)
-        self.feature_names = feature_names
-    
-    def predict_proba(self, X):
-        hgb = X.iloc[0].get("hemoglobin", 13.0)
-        mcv = X.iloc[0].get("mcv", 90.0)
-        mentzer = X.iloc[0].get("mentzer_index", 15.0)
-        green_king = X.iloc[0].get("green_king_index", 70.0)
-        
-        # Check missing flags - if key features are missing, reduce confidence
-        hgb_missing = X.iloc[0].get("hemoglobin_missing", 1)
-        mcv_missing = X.iloc[0].get("mcv_missing", 1)
+# Initialize the model
+MODEL_PATH = "hemoglobinopathy_model.xgb"
+TRAINING_DATA_PATH = "training_features.csv"  # for SHAP
 
-        score = 0.0
-        if hgb < 12:
-            score += 0.25
-        if mcv < 80:
-            score += 0.35
-        if mentzer < 13:
-            score += 0.25
-        if green_king < 60:
-            score += 0.15
-        
-        # Reduce confidence if key features are missing
-        if hgb_missing or mcv_missing:
-            score = score * 0.7
-
-        proba = min(score, 0.95)
-        
-        return np.array([[1 - proba, proba]])
-    
-    def get_shap_values(self, X):
-        return self.explainer.shap_values(X)
-
-model = DummyModel()
+model = XGBoostModel(
+    model_path=MODEL_PATH,
+    training_data_path=TRAINING_DATA_PATH
+)
 
 # ============================================
 # FHIR Parser
@@ -681,12 +675,17 @@ def diagnose(diagnose_request: DiagnoseRequest, request: Request, api_key: str =
             raise HTTPException(status_code=400, detail="No valid lab results after resolution and normalization")
 
         X = extract_features(resolved_labs)
-        proba = model.predict_proba(X)[0, 1]
+        print("=== DEBUG: Feature values from extract_features ===")
+        print(X.to_dict())
+    
+        proba = model.predict_proba(X)
+        print(f"DEBUG: Raw probability from model = {proba}")
+        THRESHOLD = 0.6152
         
-        shap_contributions = get_shap_contributions(model, X, model.feature_names)
+        shap_contributions = model.get_shap_values(X)
         
         diagnoses = []
-        if proba > 0.7:
+        if proba > THRESHOLD:
             citations = get_citation_objects("D56.3")
             diagnoses.append(Diagnosis(
                 diagnosis="Beta-thalassemia trait",
@@ -766,12 +765,15 @@ def diagnose_from_fhir(bundle: FHIRBundle, request: Request, api_key: str = Secu
             )
         
         X = extract_features(lab_results)
-        proba = model.predict_proba(X)[0, 1]
         
-        shap_contributions = get_shap_contributions(model, X, model.feature_names)
+        proba = model.predict_proba(X)
+
+        THRESHOLD = 0.6152
+        
+        shap_contributions = model.get_shap_values(X)
         
         diagnoses = []
-        if proba > 0.7:
+        if proba > THRESHOLD:
             citations = get_citation_objects("D56.3")
             diagnoses.append(Diagnosis(
                 diagnosis="Beta-thalassemia trait",

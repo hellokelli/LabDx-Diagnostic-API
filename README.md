@@ -150,3 +150,12 @@ pip install -r requirements-dev.txt
 ```bash
 pytest test_labdx.py -v
 ```
+## Model Performance (MIMIC-IV Validation)
+
+| Metric | Value |
+|--------|-------|
+| AUC | 0.9101 |
+| Sensitivity | 100% |
+| Specificity | 97.59% |
+| Optimal Threshold | 0.6152 |
+| Test set size | 496 patients (140 cases, 356 controls) |
