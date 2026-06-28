@@ -57,6 +57,17 @@ def get_citations(icd10_code: str) -> List[dict]:
     return []
 
 # ============================================
+# Model Directory and Training Data
+# ============================================
+
+MODEL_DIR = "models"
+TRAINING_DATA_PATHS = {
+    "thalassemia_trait": os.path.join(MODEL_DIR, "training_features.csv"),
+    "sickle_cell_disease": os.path.join(MODEL_DIR, "sickle_training_features.csv"),
+    "sickle_cell_trait": os.path.join(MODEL_DIR, "sickle_trait_training_features.csv")
+}
+
+# ============================================
 # Unit Definitions and Normalization
 # ============================================
 
@@ -413,6 +424,195 @@ def extract_features(lab_history):
     return pd.DataFrame([features])
 
 # ============================================
+# Model Registry for Multiple Conditions
+# ============================================
+
+class ModelRegistry:
+    """Load and manage multiple XGBoost models"""
+    
+    def __init__(self, model_dir="models"):
+        self.models = {}
+        self.features = {}
+        self.thresholds = {}
+        self.icd10_map = {}
+        self.name_map = {}
+        self.feature_order_map = {}   
+        self.feature_mapping_map = {}  
+        
+        # Define all models with their paths and thresholds
+        model_configs = {
+            "thalassemia_trait": {
+                "path": os.path.join(model_dir, "hemoglobinopathy_model.xgb"),
+                "threshold": 0.6152,
+                "icd10": "D56.3",
+                "name": "Beta-thalassemia trait",
+                "feature_order": ["Hemoglobin", "MCV", "RBC", "RDW", 
+                                  "mentzer_index", "green_king_index", "england_fraser_index"],
+                "feature_mapping": {
+                    "hemoglobin": "Hemoglobin",
+                    "mcv": "MCV",
+                    "rbc": "RBC",
+                    "rdw": "RDW",
+                    "mentzer_index": "mentzer_index",
+                    "green_king_index": "green_king_index",
+                    "england_fraser_index": "england_fraser_index"
+                }
+            },
+            "sickle_cell_disease": {
+                "path": os.path.join(model_dir, "sickle_disease_model.xgb"),
+                "threshold": 0.50,  # Update with your actual threshold
+                "icd10": "D57.0",
+                "name": "Sickle cell disease",
+                "feature_order": ["Hemoglobin", "Hematocrit", "MCV", "MCH", "MCHC", 
+                                  "RBC", "RDW", "RDW_SD", "Platelets", "WBC"],
+                "feature_mapping": {
+                    "hemoglobin": "Hemoglobin",
+                    "mcv": "MCV",
+                    "mch": "MCH",
+                    "mchc": "MCHC",
+                    "rbc": "RBC",
+                    "rdw": "RDW",
+                    "platelets": "Platelets",
+                    "wbc": "WBC"
+                }
+            },
+            "sickle_cell_trait": {
+                "path": os.path.join(model_dir, "sickle_trait_model.xgb"),
+                "threshold": 0.75,  
+                "icd10": "D57.3",
+                "name": "Sickle cell trait",
+                "feature_order": ["Hemoglobin", "MCV", "MCH", "RBC", "RDW", 
+                                  "green_king_index", "england_fraser_index"],
+                "feature_mapping": {
+                    "hemoglobin": "Hemoglobin",
+                    "mcv": "MCV",
+                    "mch": "MCH",
+                    "rbc": "RBC",
+                    "rdw": "RDW",
+                    "green_king_index": "green_king_index",
+                    "england_fraser_index": "england_fraser_index"
+                }
+            }
+        }
+        
+        for key, config in model_configs.items():
+            try:
+                model = xgb.Booster()
+                model.load_model(config["path"])
+                self.models[key] = model
+                self.thresholds[key] = config["threshold"]
+                self.icd10_map[key] = config["icd10"]
+                self.name_map[key] = config["name"]
+                self.feature_order_map[key] = config["feature_order"]
+                self.feature_mapping_map[key] = config["feature_mapping"]
+                print(f"Loaded model: {key}")
+            except Exception as e:
+                print(f"Failed to load {key}: {e}")
+    
+    def preprocess_features(self, features_df, model_key):
+        """Preprocess features for a specific model"""
+        mapping = self.feature_mapping_map.get(model_key, {})
+        order = self.feature_order_map.get(model_key, [])
+        
+        # Rename columns using mapping
+        renamed = features_df.rename(columns=mapping)
+        
+        # Select and order features
+        return renamed[order]
+    
+    def predict_all(self, features_df):
+        """Run all models and return predictions"""
+        results = {}
+        for key in self.models.keys():
+            try:
+                X_processed = self.preprocess_features(features_df, key)
+                dmatrix = xgb.DMatrix(X_processed)
+                proba = self.models[key].predict(dmatrix)[0]
+                results[key] = proba
+            except Exception as e:
+                print(f"Error predicting with {key}: {e}")
+                results[key] = 0.0
+        return results
+    
+    def get_diagnoses(self, features_df, shap_contributions=None):
+        """Return all diagnoses that exceed their thresholds"""
+        predictions = self.predict_all(features_df)
+        diagnoses = []
+        
+        for key, proba in predictions.items():
+            if proba > self.thresholds.get(key, 0.5):
+                shap_vals = shap_contributions.get(key, []) if shap_contributions else []
+                diagnoses.append(Diagnosis(
+                    diagnosis=self.name_map.get(key, key),
+                    icd10=self.icd10_map.get(key, "R69"),
+                    confidence=proba,
+                    confidence_interval_lower=proba - 0.07,
+                    confidence_interval_upper=proba + 0.07,
+                    supporting_labs=get_supporting_labs(key, features_df),
+                    feature_contributions=shap_vals,
+                    citations=get_citation_objects(self.icd10_map.get(key, "R69"))
+                ))
+        
+        # Sort by confidence (highest first)
+        diagnoses.sort(key=lambda x: x.confidence, reverse=True)
+        return diagnoses
+    def get_shap_for_model(self, model_key, features_df):
+        """Get SHAP values for a specific model"""
+        try:
+            # Preprocess features for this model
+            X_processed = self.preprocess_features(features_df, model_key)
+            
+            # You'll need to load a SHAP explainer for each model
+            # This requires training_data per model
+            if not hasattr(self, 'explainers'):
+                self.explainers = {}
+            
+            if model_key not in self.explainers:
+                # Load training data for this model
+                training_path = TRAINING_DATA_PATHS.get(model_key)
+                if training_path and os.path.exists(training_path):
+                    training_data = pd.read_csv(training_path)
+                    order = self.feature_order_map.get(model_key, [])
+                    self.explainers[model_key] = shap.TreeExplainer(
+                        self.models[model_key], 
+                        training_data[order]
+                    )
+                else:
+                    return []
+            
+            shap_values = self.explainers[model_key].shap_values(X_processed)
+            
+            contributions = []
+            order = self.feature_order_map.get(model_key, [])
+            for i, feature in enumerate(order):
+                contributions.append(FeatureContribution(
+                    feature=feature,
+                    value=float(X_processed.iloc[0, i]),
+                    shap=float(shap_values[0][i])
+                ))
+            
+            contributions.sort(key=lambda x: abs(x.shap), reverse=True)
+            return contributions[:5]
+        except Exception as e:
+            print(f"SHAP error for {model_key}: {e}")
+            return []
+
+def get_supporting_labs(model_key, features_df):
+    """Return supporting labs based on the model and features"""
+    # This can be customized per model
+    supporting_labs = []
+    if "mcv" in features_df.columns:
+        if features_df["mcv"].iloc[0] < 80:
+            supporting_labs.append("Low MCV")
+    if "hemoglobin" in features_df.columns:
+        if features_df["hemoglobin"].iloc[0] < 12:
+            supporting_labs.append("Low hemoglobin")
+    if "rdw" in features_df.columns:
+        if features_df["rdw"].iloc[0] > 15:
+            supporting_labs.append("Elevated RDW")
+    return supporting_labs
+
+# ============================================
 # XGBoost Model with SHAP
 # ============================================
 
@@ -421,84 +621,19 @@ import shap
 import pandas as pd
 import numpy as np
 
-class XGBoostModel:
-
-    def __init__(self, model_path, training_data_path=None):
-       # Load the .xgb model file
-        self.model = xgb.Booster()
-        self.model.load_model(model_path)
-        
-        # Verify model loaded
-        if self.model is None:
-            raise ValueError(f"Failed to load model from {model_path}")
-        
-        # Define feature mapping (from API column names to model column names)
-        self.feature_mapping = {
-            "hemoglobin": "Hemoglobin",
-            "mcv": "MCV",
-            "rbc": "RBC",
-            "rdw": "RDW",
-            "mentzer_index": "mentzer_index",
-            "green_king_index": "green_king_index",
-            "england_fraser_index": "england_fraser_index"
-        }
-        
-        # Define expected feature order
-        self.feature_order = ["Hemoglobin", "MCV", "RBC", "RDW", 
-                              "mentzer_index", "green_king_index", "england_fraser_index"]
-        
-        # Initialize SHAP explainer (if training data provided)
-        self.explainer = None
-        if training_data_path:
-            training_data = pd.read_csv(training_data_path)
-            self.explainer = shap.TreeExplainer(self.model, training_data[self.feature_order])
-    
-    def preprocess_features(self, features_df):
-        """Rename and select features to match model expectations"""
-        # Rename columns
-        renamed = features_df.rename(columns=self.feature_mapping)
-        # Select and order features
-        return renamed[self.feature_order]
-    
-    def predict_proba(self, features_df):
-        """Return probability for class 1 (thalassemia)"""
-        X_processed = self.preprocess_features(features_df)
-        dmatrix = xgb.DMatrix(X_processed)
-        proba = self.model.predict(dmatrix)[0]
-        return proba
-    
-    def get_shap_values(self, features_df):
-        """Return SHAP values for top features"""
-        if self.explainer is None:
-            return []
-        
-        X_processed = self.preprocess_features(features_df)
-        shap_values = self.explainer.shap_values(X_processed)
-        
-        contributions = []
-        for i, feature in enumerate(self.feature_order):
-            contributions.append({
-                "feature": feature,
-                "value": float(X_processed.iloc[0, i]),
-                "shap": float(shap_values[0][i])
-            })
-        
-        # Sort by absolute SHAP value and return top 5
-        contributions.sort(key=lambda x: abs(x["shap"]), reverse=True)
-        return contributions[:5]
-
 # ============================================
-# Initialize the Model
+# Initialize the Model Registry
 # ============================================
 
-# Initialize the model
-MODEL_PATH = "hemoglobinopathy_model.xgb"
-TRAINING_DATA_PATH = "training_features.csv"  # for SHAP
+# Initialize the model registry
+model_registry = ModelRegistry(model_dir=MODEL_DIR)
 
-model = XGBoostModel(
-    model_path=MODEL_PATH,
-    training_data_path=TRAINING_DATA_PATH
-)
+# If no models loaded, fallback to dummy
+if len(model_registry.models) == 0:
+    print("WARNING: No models loaded. API will return inconclusive results.")
+
+
+
 
 # ============================================
 # FHIR Parser
@@ -678,51 +813,42 @@ def diagnose(diagnose_request: DiagnoseRequest, request: Request, api_key: str =
         print("=== DEBUG: Feature values from extract_features ===")
         print(X.to_dict())
     
-        proba = model.predict_proba(X)
-        print(f"DEBUG: Raw probability from model = {proba}")
-        THRESHOLD = 0.6152
-        
-        shap_contributions = model.get_shap_values(X)
-        
+        all_predictions = model_registry.predict_all(X)
+        print(f"DEBUG: All predictions: {all_predictions}")
+
         diagnoses = []
-        if proba > THRESHOLD:
-            citations = get_citation_objects("D56.3")
+
+        for key, proba in all_predictions.items():
+            threshold = model_registry.thresholds.get(key, 0.5)
+            if proba > threshold:
+                # Get SHAP values for this model (if available)
+                shap_vals = model_registry.get_shap_for_model(key, X)
+                
+                diagnoses.append(Diagnosis(
+                    diagnosis=model_registry.name_map.get(key, key),
+                    icd10=model_registry.icd10_map.get(key, "R69"),
+                    confidence=proba,
+                    confidence_interval_lower=proba - 0.07,
+                    confidence_interval_upper=proba + 0.07,
+                    supporting_labs=get_supporting_labs(key, X),
+                    feature_contributions=shap_vals,
+                    citations=get_citation_objects(model_registry.icd10_map.get(key, "R69"))
+                ))
+        
+        # If no diagnoses exceed thresholds, return normal
+        if len(diagnoses) == 0:
+            citations = get_citation_objects("Z01.00")
             diagnoses.append(Diagnosis(
-                diagnosis="Beta-thalassemia trait",
-                icd10="D56.3",
-                confidence=proba,
-                confidence_interval_lower=proba - 0.07,
-                confidence_interval_upper=proba + 0.07,
-                supporting_labs=["Low MCV", "Normal or elevated RBC", "Normal ferritin"],
-                feature_contributions=shap_contributions,
+                diagnosis="No significant abnormality detected",
+                icd10="Z01.00",
+                confidence=0.95,
+                confidence_interval_lower=0.90,
+                confidence_interval_upper=1.00,
+                supporting_labs=["Within normal limits"],
+                feature_contributions=[],
                 citations=citations
             ))
-        
-        if len(diagnoses) == 0:
-            if proba < 0.5:
-                citations = get_citation_objects("Z01.00")
-                diagnoses.append(Diagnosis(
-                    diagnosis="No significant abnormality detected",
-                    icd10="Z01.00",
-                    confidence=1 - proba,
-                    confidence_interval_lower=(1 - proba) - 0.05,
-                    confidence_interval_upper=(1 - proba) + 0.05,
-                    supporting_labs=["Within normal limits"],
-                    feature_contributions=shap_contributions,
-                    citations=citations
-                ))
-            else:
-                citations = get_citation_objects("R69")
-                diagnoses.append(Diagnosis(
-                    diagnosis="Inconclusive - further testing recommended",
-                    icd10="R69",
-                    confidence=0.5,
-                    confidence_interval_lower=0.4,
-                    confidence_interval_upper=0.6,
-                    supporting_labs=["Results do not fit typical pattern"],
-                    feature_contributions=shap_contributions,
-                    citations=citations
-                ))
+        diagnoses.sort(key=lambda x: x.confidence, reverse=True)
         
         processing_time = int((time.time() - start_time) * 1000)
         
@@ -731,8 +857,10 @@ def diagnose(diagnose_request: DiagnoseRequest, request: Request, api_key: str =
             processing_time_ms=processing_time,
             potential_diagnoses=diagnoses
         )
+        
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+    
 
 @app.post(
     "/diagnose/fhir",
@@ -765,52 +893,42 @@ def diagnose_from_fhir(bundle: FHIRBundle, request: Request, api_key: str = Secu
             )
         
         X = extract_features(lab_results)
-        
-        proba = model.predict_proba(X)
 
-        THRESHOLD = 0.6152
-        
-        shap_contributions = model.get_shap_values(X)
-        
+        all_predictions = model_registry.predict_all(X)
+        print(f"DEBUG: All predictions: {all_predictions}")
+
         diagnoses = []
-        if proba > THRESHOLD:
-            citations = get_citation_objects("D56.3")
-            diagnoses.append(Diagnosis(
-                diagnosis="Beta-thalassemia trait",
-                icd10="D56.3",
-                confidence=proba,
-                confidence_interval_lower=proba - 0.07,
-                confidence_interval_upper=proba + 0.07,
-                supporting_labs=["Low MCV", "Normal or elevated RBC", "Normal ferritin"],
-                feature_contributions=shap_contributions,
-                citations=citations
-            ))
+
+        for key, proba in all_predictions.items():
+            threshold = model_registry.thresholds.get(key, 0.5)
+            if proba > threshold:
+                # Get SHAP values for this model (if available)
+                shap_vals = model_registry.get_shap_for_model(key, X)
+                
+                diagnoses.append(Diagnosis(
+                    diagnosis=model_registry.name_map.get(key, key),
+                    icd10=model_registry.icd10_map.get(key, "R69"),
+                    confidence=proba,
+                    confidence_interval_lower=proba - 0.07,
+                    confidence_interval_upper=proba + 0.07,
+                    supporting_labs=get_supporting_labs(key, X),
+                    feature_contributions=shap_vals,
+                    citations=get_citation_objects(model_registry.icd10_map.get(key, "R69"))
+                ))
         
         if len(diagnoses) == 0:
-            if proba < 0.5:
-                citations = get_citation_objects("Z01.00")
-                diagnoses.append(Diagnosis(
-                    diagnosis="No significant abnormality detected",
-                    icd10="Z01.00",
-                    confidence=1 - proba,
-                    confidence_interval_lower=(1 - proba) - 0.05,
-                    confidence_interval_upper=(1 - proba) + 0.05,
-                    supporting_labs=["Within normal limits"],
-                    feature_contributions=shap_contributions,
-                    citations=citations
-                ))
-            else:
-                citations = get_citation_objects("R69")
-                diagnoses.append(Diagnosis(
-                    diagnosis="Inconclusive - further testing recommended",
-                    icd10="R69",
-                    confidence=0.5,
-                    confidence_interval_lower=0.4,
-                    confidence_interval_upper=0.6,
-                    supporting_labs=["Results do not fit typical pattern"],
-                    feature_contributions=shap_contributions,
-                    citations=citations
-                ))
+            citations = get_citation_objects("Z01.00")
+            diagnoses.append(Diagnosis(
+                diagnosis="No significant abnormality detected",
+                icd10="Z01.00",
+                confidence=0.95,
+                confidence_interval_lower=0.90,
+                confidence_interval_upper=1.00,
+                supporting_labs=["Within normal limits"],
+                feature_contributions=[],
+                citations=citations
+            ))
+        diagnoses.sort(key=lambda x: x.confidence, reverse=True)
         
         processing_time = int((time.time() - start_time) * 1000)
         

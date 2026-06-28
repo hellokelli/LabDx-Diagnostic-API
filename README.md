@@ -152,10 +152,29 @@ pytest test_labdx.py -v
 ```
 ## Model Performance (MIMIC-IV Validation)
 
+Beta-Thalassemia Trait
 | Metric | Value |
 |--------|-------|
 | AUC | 0.9101 |
 | Sensitivity | 100% |
 | Specificity | 97.59% |
 | Optimal Threshold | 0.6152 |
-| Test set size | 496 patients (140 cases, 356 controls) |
+| Training set size | 496 patients (140 cases, 356 controls) |
+
+Sickle Cell Disease
+| Metric | Value |
+|--------|-------|
+| AUC | 0.9616 |
+| Sensitivity | 86.96% |
+| Specificity | 100% |
+| Optimal Threshold | 0.5044 |
+| Training set size | 715 patients (131 cases, 584 controls) |
+
+Sickle Cell Trait
+| Metric | Value |
+|--------|-------|
+| AUC | 0.9437 |
+| Sensitivity | 80.98% |
+| Specificity | 100% |
+| Optimal Threshold | 0.599 |
+| Training set size | 742 patients (136 cases, 606 controls) |

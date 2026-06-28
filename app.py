@@ -22,15 +22,15 @@ a differential diagnosis with SHAP explanations and peer-reviewed citations.
 """)
 
 # Sidebar for input
-st.sidebar.header("Patient Information")
-birth_year = st.sidebar.number_input("Birth Year", min_value=1900, max_value=2026, value=1975)
-sex = st.sidebar.selectbox("Sex", ["Female", "Male"])
+#st.sidebar.header("Patient Information")
+#birth_year = st.sidebar.number_input("Birth Year", min_value=1900, max_value=2026, value=1975)
+#sex = st.sidebar.selectbox("Sex", ["Female", "Male"])
 
-st.sidebar.header("Laboratory Results")
-hemoglobin = st.sidebar.number_input("Hemoglobin (g/dL)", value=11.4, step=0.1)
-mcv = st.sidebar.number_input("MCV (fL)", value=70.0, step=1.0)
-rbc = st.sidebar.number_input("RBC (million/uL)", value=5.2, step=0.1)
-rdw = st.sidebar.number_input("RDW (%)", value=13.5, step=0.1)
+#st.sidebar.header("Laboratory Results")
+#hemoglobin = st.sidebar.number_input("Hemoglobin (g/dL)", value=11.4, step=0.1)
+#mcv = st.sidebar.number_input("MCV (fL)", value=70.0, step=1.0)
+#rbc = st.sidebar.number_input("RBC (million/uL)", value=5.2, step=0.1)
+#rdw = st.sidebar.number_input("RDW (%)", value=13.5, step=0.1)
 
 # API endpoint
 api_url = st.text_input("API URL", value="http://localhost:8000/diagnose")
