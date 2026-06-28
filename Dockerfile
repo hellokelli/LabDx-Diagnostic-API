@@ -16,6 +16,9 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY labdx_api.py .
 COPY citations.json .
 
+# Copy the models folder
+COPY models/ ./models/
+
 # Expose the port
 EXPOSE 8000
 
