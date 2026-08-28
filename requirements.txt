@@ -9,3 +9,4 @@ fuzzywuzzy
 python-Levenshtein
 slowapi
 python-dotenv
+streamlit
