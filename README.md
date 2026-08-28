@@ -103,7 +103,7 @@ graph TD
     end
 
     subgraph "Prediction Engine"
-        E[Three Independent XGBoost Models<br/>Thalassemia | SCD | SCT]
+        E[Three Independent XGBoost Models Thalassemia SCD SCT]
     end
 
     E --> F[Post-Processing]
