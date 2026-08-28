@@ -15,12 +15,14 @@
 - [x] GitHub Actions CI
 - [x] Docker containers
 - [x] Raspberry Pi deployment
+- [x] MIMIC-IV approval 
+- [x] Real XGBoost model training
 
 ### In Progress
-- [ ] MIMIC-IV approval pending
+
 
 ### Planned
-- [ ] Real XGBoost model training
+
 - [ ] Temporal slopes (3,6,12 months)
 - [ ] Anomaly detection (Isolation Forest)
 - [ ] OAuth 2.0 support
@@ -33,7 +35,10 @@ Phase 1 (Current) succeeds only if all success metrics are met. Expansion procee
 
 ### Phase 2: Complete Hemoglobinopathy Coverage
 
-Expand to alpha-thalassemia traits, HbC, HbD, and unstable hemoglobins.
+- Expand to alpha-thalassemia traits, HbC, HbD, and unstable hemoglobins.
+- Additional data set with outpatient data.
+- Multi-class model
+-
 
 | Condition | Target AUC | Data Source |
 |-----------|------------|-------------|
@@ -47,6 +52,11 @@ Go decision: Phase 1 metrics met AND data available for new conditions.
 ### Phase 3: Adjacent Hematologic Conditions
 
 Expand to polycythemia vera, myelodysplastic syndromes, autoimmune hemolytic anemia, and G6PD deficiency.
+- Temporal slopes (3,6,12 months)
+- Anomaly detection (Isolation Forest)
+- OAuth 2.0 support
+- Cloud deployment (Render/Fly.io)
+- Redis caching
 
 | Condition | Primary Lab Markers |
 |-----------|---------------------|

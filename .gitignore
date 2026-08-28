@@ -17,6 +17,7 @@ venv/
 # Jupyter notebooks (optional - remove if you want to track them)
 .ipynb_checkpoints/
 *.ipynb
+/models/
 
 # API and logs
 *.log
@@ -34,3 +35,5 @@ venv/
 
 # GitHub workflows (local testing)
 .github/
+
+/archived/

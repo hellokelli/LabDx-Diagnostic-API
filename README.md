@@ -1,6 +1,5 @@
-![Run Unit Tests](https://github.com/hellokelli/LabDx-Diagnostic-API/actions/workflows/test.yml/badge.svg)
-![Static Badge](https://img.shields.io/badge/coverage-88%25-green)
-![Static Badge](https://img.shields.io/badge/docs-80%25-green)
+![Static Badge](https://img.shields.io/badge/coverage-87%25-green)
+![Static Badge](https://img.shields.io/badge/docs-85%25-green)
 
 # 🔬 LabDx: Diagnostic API for Hemoglobinopathy Detection
 
@@ -37,9 +36,7 @@ This API starts with hemoglobinopathies. However, the architecture is designed t
 | Feature | Description |
 |---------|-------------|
 | Lab-result-driven diagnosis | No symptoms or suspected diagnosis required |
-| Longitudinal trend analysis | Calculates slopes, acceleration, and variability over 3-12 months |
 | Transparent predictions | SHAP values show why each diagnosis was suggested |
-| Rare disease flagging | Anomaly detection identifies unrecognized patterns |
 | FHIR native | Accepts FHIR R4 bundles for EHR integration |
 | Evidence-cited | Every diagnosis includes peer-reviewed citations |
 
@@ -49,25 +46,27 @@ This API starts with hemoglobinopathies. However, the architecture is designed t
 
 | Condition | Prevalence | Key Lab Markers |
 |-----------|------------|-----------------|
-| Beta-thalassemia trait | 1-20% globally | Low MCV, normal/elevated RBC, normal ferritin |
-| Iron deficiency anemia | 5-10% | Low MCV, low ferritin, high RDW |
-| Sickle cell trait/disease | 1-40% endemic | Low Hb, HbS on electrophoresis |
-| HbE trait | 10-60% SE Asia | Low MCV, low MCH, HbE peak |
+| Beta-thalassemia trait | 1-6% globally | Low MCV, normal/elevated RBC, normal ferritin |
+| Sickle cell disease | <1% | Low RBC, low Hb, high RDW, high WBW |
+| Sickle cell trait | 1-5% endemic | Slightly low MCV |
+
 
 ---
 
 ## Success Metrics (Pilot)
 
-The pilot phase targets hemoglobinopathies (beta-thalassemia trait, sickle cell disease/trait, HbE trait, and iron deficiency anemia). Success is defined by the following quantifiable metrics:
+The pilot phase targets hemoglobinopathies (beta-thalassemia trait, sickle cell disease/trait). Success is defined by the following quantifiable metrics:
 
 ### Model Performance
 
 | Metric | Target | Measurement |
 |--------|--------|-------------|
-| AUC (common conditions) | >0.90 | Area under ROC curve for beta-thalassemia and sickle cell |
-| AUC (rare variants) | >0.85 | Area under ROC curve for HbE trait |
+| AUC (common conditions) | >0.90 | Area under ROC curve  |
+| AUC (rare variants) | >0.85 | Area under ROC curve  |
 | Calibration slope | 0.8 - 1.2 | Calibration curve slope (ideal = 1.0) |
 | Calibration intercept | <0.1 | Calibration curve intercept (ideal = 0) |
+| Sensitivity | >90% | |
+| Specificity | >95% | |
 | External validation drop | <15% | Performance drop from internal to external validation |
 | Net benefit at 10% threshold | >0.02 | Decision curve analysis net benefit |
 
@@ -98,24 +97,23 @@ graph TD
     end
 
     subgraph "Feature Pipeline"
-        D --> D1[Temporal Aggregates]
-        D1 --> D2[Derived Indices]
+        D --> D1[Extract CBC Parameters]
+        D1 --> D2[Apply Defaults for Missing Values]
         D2 --> E
     end
 
     subgraph "Prediction Engine"
-        E[XGBoost + Anomaly Detection]
+        E[Three Independent XGBoost Models<br/>Thalassemia | SCD | SCT]
     end
 
     E --> F[Post-Processing]
 
     subgraph "Post-Processing"
-        F --> F1[Calibration]
-        F1 --> F2[SHAP Values]
-        F2 --> F3[Citation Lookup]
+        F --> F1[SHAP Values]
+        F1 --> F2[Citation Lookup]
     end
 
-    F3 --> G[JSON Response]
+    F2 --> G[JSON Response]
     G --> H[Client]
 ```
 ---
@@ -152,29 +150,38 @@ pytest test_labdx.py -v
 ```
 ## Model Performance (MIMIC-IV Validation)
 
-Beta-Thalassemia Trait
-| Metric | Value |
-|--------|-------|
-| AUC | 0.9101 |
-| Sensitivity | 100% |
-| Specificity | 97.59% |
-| Optimal Threshold | 0.6152 |
-| Training set size | 496 patients (140 cases, 356 controls) |
+### Beta-Thalassemia Trait
 
-Sickle Cell Disease
 | Metric | Value |
 |--------|-------|
-| AUC | 0.9616 |
+| AUC | 0.9792 |
+| 95% CI | 0.9341 – 0.9938 |
+| Sensitivity | 93.41% |
+| Specificity | 99.38% |
+| Optimal Threshold | 0.3054 |
+| Training set size | 3,587 patients (362 cases, 3,225 controls) |
+| Test set size | 898 patients (91 cases, 807 controls) |
+
+### Sickle Cell Disease
+
+| Metric | Value |
+|--------|-------|
+| AUC | 0.9706 |
+| 95% CI | 0.9568 – 0.9845 |
+| Sensitivity | 90.81% |
+| Specificity | 99.88% |
+| Optimal Threshold | 0.7508 |
+| Training set size | 4,313 patients (1,088 cases, 3,225 controls) |
+| Test set size | 1,079 patients (272 cases, 807 controls) |
+
+### Sickle Cell Trait
+
+| Metric | Value |
+|--------|-------|
+| AUC | 0.9582 |
+| 95% CI | 0.9364 – 0.9799 |
 | Sensitivity | 86.96% |
-| Specificity | 100% |
-| Optimal Threshold | 0.5044 |
-| Training set size | 715 patients (131 cases, 584 controls) |
-
-Sickle Cell Trait
-| Metric | Value |
-|--------|-------|
-| AUC | 0.9437 |
-| Sensitivity | 80.98% |
-| Specificity | 100% |
-| Optimal Threshold | 0.599 |
-| Training set size | 742 patients (136 cases, 606 controls) |
+| Specificity | 97.99% |
+| Optimal Threshold | 0.4042 |
+| Training set size | 3,774 patients (549 cases, 3,225 controls) |
+| Test set size | 945 patients (138 cases, 807 controls) |

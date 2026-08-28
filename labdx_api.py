@@ -62,9 +62,9 @@ def get_citations(icd10_code: str) -> List[dict]:
 
 MODEL_DIR = "models"
 TRAINING_DATA_PATHS = {
-    "thalassemia_trait": os.path.join(MODEL_DIR, "training_features.csv"),
-    "sickle_cell_disease": os.path.join(MODEL_DIR, "sickle_training_features.csv"),
-    "sickle_cell_trait": os.path.join(MODEL_DIR, "sickle_trait_training_features.csv")
+    "thalassemia_trait": os.path.join(MODEL_DIR, "training_features_thal.csv"),
+    "sickle_cell_disease": os.path.join(MODEL_DIR, "training_features_sc.csv"),
+    "sickle_cell_trait": os.path.join(MODEL_DIR, "training_features_sct.csv"),
 }
 
 # ============================================
@@ -100,6 +100,29 @@ EXPECTED_UNITS = {
         "standard": "%",
         "aliases": ["percent", "percentage"],
         "normalizable": []
+    },
+    "hematocrit": {
+        "standard": "%",
+        "aliases": ["percent", "percentage"],
+        "normalizable": []
+    },
+    "platelets": {
+        "standard": "million/uL",
+        "aliases": ["million/ul", "x10^6/ul", "10^6/ul"],
+        "normalizable": []
+    },
+    "wbc": {
+        "standard": "million/uL",
+        "aliases": ["million/ul", "x10^6/ul", "10^6/ul"],
+        "normalizable": []
+    },
+    "mchc": {
+        "standard": "g/dL",
+        "aliases": ["g/dl", "gram/deciliter"],
+        "normalizable": [
+            {"unit": "g/L", "factor": 0.1},
+            {"unit": "gram/liter", "factor": 0.1}
+        ]
     }
 }
 
@@ -159,6 +182,14 @@ CANONICAL_TESTS = {
     "wbc": {
         "loinc": "6690-2",
         "synonyms": ["wbc", "white blood cell count", "leukocyte count", "wbc count", "white blood cells"]
+    },
+    "hematocrit": {
+        "loinc": "785-0",
+        "synonyms": ["hematocrit", "hct", "hematocrit percentage", "hct percentage"]
+    },
+    "mchc": {
+        "loinc": "777-4",
+        "synonyms": ["mchc", "mean corpuscular hemoglobin concentration", "mean cell hemoglobin concentration", "mean corpuscular hemoglobin concentration mchc"]
     }
 }
 
@@ -354,7 +385,11 @@ def extract_features(lab_history):
         "mcv": False,
         "mch": False,
         "rbc": False,
-        "rdw": False
+        "rdw": False,
+        "hematocrit": False,
+        "platelets": False,
+        "wbc": False,
+        "mchc": False
     }
 
     for lab in lab_history:
@@ -365,16 +400,31 @@ def extract_features(lab_history):
         elif test_name in ["mcv", "mean corpuscular volume"]:
             features["mcv"] = lab.value
             tests_found["mcv"] = True
+        elif test_name in ["mch", "mean corpuscular hemoglobin"]: 
+            features["mch"] = lab.value
+            tests_found["mch"] = True
         elif test_name in ["rbc", "red blood cell count"]:
             features["rbc"] = lab.value
             tests_found["rbc"] = True
         elif test_name in ["rdw", "red cell distribution width"]:
             features["rdw"] = lab.value
             tests_found["rdw"] = True
+        elif test_name in ["hematocrit", "hct"]:
+            features["hematocrit"] = lab.value
+            tests_found["hematocrit"] = True
+        elif test_name in ["platelets", "plt"]:
+            features["platelets"] = lab.value
+            tests_found["platelets"] = True
+        elif test_name in ["wbc", "white blood cell count"]:
+            features["wbc"] = lab.value
+            tests_found["wbc"] = True
+        elif test_name in ["mchc", "mean corpuscular hemoglobin concentration"]: 
+            features["mchc"] = lab.value
+            tests_found["mchc"] = True
     
     for test_name in tests_found:
         missing_flags[f"{test_name}_missing"] = 0 if tests_found[test_name] else 1
-    
+    '''
     # Mentzer index (MCV / RBC) 
     if tests_found["mcv"] and tests_found["rbc"] and features.get("rbc", 0) > 0:
         features["mentzer_index"] = features["mcv"] / features["rbc"]
@@ -402,6 +452,13 @@ def extract_features(lab_history):
     else:
         features["srivastava_index"] = 0
         missing_flags["srivastava_index_missing"] = 1
+
+    # Calculate mcv_plus_hgb_2 (MCV + 2 * Hemoglobin)
+    if "mcv" in features and "hemoglobin" in features:
+        features["mcv_plus_hgb_2"] = features["mcv"] + (2 * features["hemoglobin"])
+    else:
+        features["mcv_plus_hgb_2"] = 0
+    '''
     
     default_features = {
         "hemoglobin": 13.0,
@@ -409,11 +466,10 @@ def extract_features(lab_history):
         "mch": 30,
         "rbc": 4.8,
         "rdw": 13.5,
-        "mentzer_index": 15,
-        "green_king_index": 70,
-        "england_fraser_index": 2,
-        "srivastava_index": 6.25,
-        "rdw_cv": 13.5
+        "hematocrit": 45,
+        "platelets": 200,
+        "wbc": 10,
+        "mchc": 32
     }
     for key, default in default_features.items():
         if key not in features:
@@ -442,55 +498,55 @@ class ModelRegistry:
         # Define all models with their paths and thresholds
         model_configs = {
             "thalassemia_trait": {
-                "path": os.path.join(model_dir, "hemoglobinopathy_model.xgb"),
-                "threshold": 0.6152,
+                "path": os.path.join(model_dir, "thal-model.xgb"),
+                "threshold": 0.3054,
                 "icd10": "D56.3",
                 "name": "Beta-thalassemia trait",
-                "feature_order": ["Hemoglobin", "MCV", "RBC", "RDW", 
-                                  "mentzer_index", "green_king_index", "england_fraser_index"],
+                "feature_order": ["Hemoglobin", "MCH", "RDW", "Red Blood Cells", "MCV", "Hematocrit", "MCHC"],
                 "feature_mapping": {
                     "hemoglobin": "Hemoglobin",
                     "mcv": "MCV",
-                    "rbc": "RBC",
+                    "rbc": "Red Blood Cells",
                     "rdw": "RDW",
-                    "mentzer_index": "mentzer_index",
-                    "green_king_index": "green_king_index",
-                    "england_fraser_index": "england_fraser_index"
+                    "mch": "MCH",
+                    "mchc": "MCHC",
+                    "hematocrit": "Hematocrit"
                 }
             },
             "sickle_cell_disease": {
-                "path": os.path.join(model_dir, "sickle_disease_model.xgb"),
-                "threshold": 0.50,  # Update with your actual threshold
+                "path": os.path.join(model_dir, "sc-model.xgb"),
+                "threshold": 0.7508,
                 "icd10": "D57.0",
                 "name": "Sickle cell disease",
-                "feature_order": ["Hemoglobin", "Hematocrit", "MCV", "MCH", "MCHC", 
-                                  "RBC", "RDW", "RDW_SD", "Platelets", "WBC"],
+                "feature_order": ["Hemoglobin","MCH","RDW","Red Blood Cells","MCV","Hematocrit","MCHC","Platelet Count","White Blood Cells"],
                 "feature_mapping": {
                     "hemoglobin": "Hemoglobin",
                     "mcv": "MCV",
                     "mch": "MCH",
                     "mchc": "MCHC",
-                    "rbc": "RBC",
+                    "rbc": "Red Blood Cells",
                     "rdw": "RDW",
-                    "platelets": "Platelets",
-                    "wbc": "WBC"
+                    "platelets": "Platelet Count",
+                    "wbc": "White Blood Cells",
+                    "hematocrit": "Hematocrit"
                 }
             },
             "sickle_cell_trait": {
-                "path": os.path.join(model_dir, "sickle_trait_model.xgb"),
-                "threshold": 0.75,  
+                "path": os.path.join(model_dir, "sct-model.xgb"),
+                "threshold": 0.4042,  
                 "icd10": "D57.3",
                 "name": "Sickle cell trait",
-                "feature_order": ["Hemoglobin", "MCV", "MCH", "RBC", "RDW", 
-                                  "green_king_index", "england_fraser_index"],
+                "feature_order": ["Hemoglobin","MCH","RDW","Red Blood Cells","MCV","Hematocrit","MCHC","Platelet Count","White Blood Cells"],
                 "feature_mapping": {
                     "hemoglobin": "Hemoglobin",
                     "mcv": "MCV",
                     "mch": "MCH",
-                    "rbc": "RBC",
+                    "rbc": "Red Blood Cells",
                     "rdw": "RDW",
-                    "green_king_index": "green_king_index",
-                    "england_fraser_index": "england_fraser_index"
+                    "mchc": "MCHC",
+                    "hematocrit": "Hematocrit",
+                    "platelets": "Platelet Count",
+                    "wbc": "White Blood Cells"
                 }
             }
         }
@@ -508,6 +564,7 @@ class ModelRegistry:
                 print(f"Loaded model: {key}")
             except Exception as e:
                 print(f"Failed to load {key}: {e}")
+        
     
     def preprocess_features(self, features_df, model_key):
         """Preprocess features for a specific model"""
@@ -517,13 +574,24 @@ class ModelRegistry:
         # Rename columns using mapping
         renamed = features_df.rename(columns=mapping)
         
-        # Select and order features
+        # Check if any expected features are missing
+        missing = [f for f in order if f not in renamed.columns]
+        if missing:
+            print(f"Warning: Model {model_key} missing features: {missing}")
+            for col in missing:
+                renamed[col] = 0.0
+        
+        print(f"DEBUG: Final X_processed:\n{renamed[order]}")
+
         return renamed[order]
     
     def predict_all(self, features_df):
         """Run all models and return predictions"""
         results = {}
+        print(f"DEBUG: predict_all called with features: {list(features_df.columns)}")
+
         for key in self.models.keys():
+            print(f"DEBUG: Processing model: {key}")
             try:
                 X_processed = self.preprocess_features(features_df, key)
                 dmatrix = xgb.DMatrix(X_processed)
@@ -612,6 +680,26 @@ def get_supporting_labs(model_key, features_df):
             supporting_labs.append("Elevated RDW")
     return supporting_labs
 
+def append_diagnoses_from_predictions(all_predictions, X, model_registry):
+    """Helper function to create diagnoses from predictions"""
+    diagnoses = []
+    for key, proba in all_predictions.items():
+        if key == "thalassemia_vs_sct":
+            continue
+        threshold = model_registry.thresholds.get(key, 0.5)
+        if proba > threshold:
+            shap_vals = model_registry.get_shap_for_model(key, X)
+            diagnoses.append(Diagnosis(
+                diagnosis=model_registry.name_map.get(key, key),
+                icd10=model_registry.icd10_map.get(key, "R69"),
+                confidence=proba,
+                confidence_interval_lower=proba - 0.07,
+                confidence_interval_upper=proba + 0.07,
+                supporting_labs=get_supporting_labs(key, X),
+                feature_contributions=shap_vals,
+                citations=get_citation_objects(model_registry.icd10_map.get(key, "R69"))
+            ))
+    return diagnoses
 # ============================================
 # XGBoost Model with SHAP
 # ============================================
@@ -818,6 +906,76 @@ def diagnose(diagnose_request: DiagnoseRequest, request: Request, api_key: str =
 
         diagnoses = []
 
+        # ============================================
+        # Thalassemia vs Sickle Cell Trait Differential Diagnosis
+        # ============================================
+        # Step 1: Check thalassemia and SCT predictions
+       #thal_proba = all_predictions.get("thalassemia_trait", 0.0)
+        #sct_proba = all_predictions.get("sickle_cell_trait", 0.0)
+
+        # Step 2: Define thresholds
+        #   thal_threshold = model_registry.thresholds.get("thalassemia_trait", 0.6152)
+        #   sct_threshold = model_registry.thresholds.get("sickle_cell_trait", 0.75)
+
+        # Step 3: Determine if both are positive or in uncertain range
+        #   thal_positive = thal_proba > thal_threshold
+        #   sct_positive = sct_proba > sct_threshold
+
+        # Step 4: If both are positive OR both are in uncertain range (0.3-0.7), use differential model
+        #   thal_uncertain = 0.3 < thal_proba < 0.7
+        #   sct_uncertain = 0.3 < sct_proba < 0.7
+
+        #use_differential = (thal_positive and sct_positive) or (thal_uncertain and sct_uncertain)
+        
+        #if use_differential and "thalassemia_vs_sct" in model_registry.models:
+            # Use the thalassemia vs SCT model to decide
+            #sct_vs_thal_model = model_registry.models["thalassemia_vs_sct"]
+            # Get the features for this model
+            #feature_order = model_registry.feature_order_map.get("thalassemia_vs_sct", [])
+            # Preprocess features
+            #X_processed = X[feature_order] if all(col in X.columns for col in feature_order) else None
+            
+            #if X_processed is not None:
+                #dmatrix = xgb.DMatrix(X_processed)
+                #diff_proba = sct_vs_thal_model.predict(dmatrix)[0]
+                #print(f"DEBUG: Differential probability: {diff_proba}")
+                
+                # diff_proba > threshold means SCT, else thalassemia
+                #diff_threshold = model_registry.thresholds.get("thalassemia_vs_sct", 0.7)
+        '''
+                if diff_proba > diff_threshold:
+                    # Decision: SCT
+                    shap_vals = model_registry.get_shap_for_model("thalassemia_vs_sct", X)
+                    citations = get_citation_objects("D57.3")
+                    diagnoses.append(Diagnosis(
+                        diagnosis="Sickle cell trait",
+                        icd10="D57.3",
+                        confidence=diff_proba,
+                        confidence_interval_lower=diff_proba - 0.07,
+                        confidence_interval_upper=diff_proba + 0.07,
+                        supporting_labs=["Pattern favors sickle cell trait over thalassemia trait"],
+                        feature_contributions=shap_vals,
+                        citations=citations
+                    ))
+                else:
+                    # Decision: Thalassemia
+                    shap_vals = model_registry.get_shap_for_model("thalassemia_vs_sct", X)
+                    citations = get_citation_objects("D56.3")
+                    diagnoses.append(Diagnosis(
+                        diagnosis="Beta-thalassemia trait",
+                        icd10="D56.3",
+                        confidence=1 - diff_proba,
+                        confidence_interval_lower=(1 - diff_proba) - 0.07,
+                        confidence_interval_upper=(1 - diff_proba) + 0.07,
+                        supporting_labs=["Pattern favors beta-thalassemia trait over sickle cell trait"],
+                        feature_contributions=shap_vals,
+                        citations=citations
+                    ))
+            else:
+                # Fallback: if features missing, use the original predictions
+                diagnoses = append_diagnoses_from_predictions(all_predictions, X, model_registry)
+        else:
+        ''' 
         for key, proba in all_predictions.items():
             threshold = model_registry.thresholds.get(key, 0.5)
             if proba > threshold:
@@ -834,7 +992,7 @@ def diagnose(diagnose_request: DiagnoseRequest, request: Request, api_key: str =
                     feature_contributions=shap_vals,
                     citations=get_citation_objects(model_registry.icd10_map.get(key, "R69"))
                 ))
-        
+    
         # If no diagnoses exceed thresholds, return normal
         if len(diagnoses) == 0:
             citations = get_citation_objects("Z01.00")

@@ -3,6 +3,7 @@ import requests
 import json
 from dotenv import load_dotenv
 import os
+from datetime import datetime
 
 load_dotenv()
 API_KEY = os.getenv("LABDX_API_KEY")
@@ -48,25 +49,34 @@ col1.space(size="large")
 col2.subheader("Laboratory Results")
 #lr_form_inner = form.container()
 #col3, col4 = lr_form_inner.columns(2)
-hemoglobin = col2.slider("Hemoglobin (g/dL)", value=11.4, min_value=0.0, max_value=20.0)
-mcv = col2.slider("MCV (fL)", value=70.0, min_value=0.0, max_value=120.0)
-rbc = col2.slider("RBC (million/uL)", value=5.2, min_value=0.0, max_value=10.0)
-rdw = col2.slider("RDW (%)", value=13.5, min_value=0.0, max_value=20.0)
+hemoglobin = col2.slider("Hemoglobin (g/dL)", value=12.0, min_value=0.0, max_value=20.0)
+mcv = col2.slider("MCV (fL)", value=80.0, min_value=0.0, max_value=120.0)
+rbc = col2.slider("RBC (million/uL)", value=4.2, min_value=0.0, max_value=10.0)
+rdw = col2.slider("RDW (%)", value=12.0, min_value=0.0, max_value=20.0)
+hematocrit = col2.slider("Hematocrit (%)", value=42.0, min_value=0.0, max_value=100.0)
+platelets = col2.slider("Platelets (million/uL)", value=150.0, min_value=0.0, max_value=1000.0)
+wbc = col2.slider("WBC (million/uL)", value=10.0, min_value=0.0, max_value=100.0)
+mchc = col2.slider("MCHC (g/dL)", value=32.0, min_value=0.0, max_value=100.0)
 
 # Submit button
 if col1.button("Run Diagnosis", type="primary"):
     with st.spinner("Calling API..."):
         # Prepare request
+        today = datetime.today().strftime("%Y-%m-%d")
         request = {
             "patient": {
                 "birth_year": birth_year,
                 "sex": "F" if sex == "Female" else "M"
             },
             "lab_history": [
-                {"date": "2024-06-20", "test_name": "hemoglobin", "value": hemoglobin, "unit": "g/dL"},
-                {"date": "2024-06-20", "test_name": "MCV", "value": mcv, "unit": "fL"},
-                {"date": "2024-06-20", "test_name": "RBC", "value": rbc, "unit": "million/uL"},
-                {"date": "2024-06-20", "test_name": "RDW", "value": rdw, "unit": "%"}
+                {"date": today, "test_name": "hemoglobin", "value": hemoglobin, "unit": "g/dL"},
+                {"date": today, "test_name": "MCV", "value": mcv, "unit": "fL"},
+                {"date": today, "test_name": "RBC", "value": rbc, "unit": "million/uL"},
+                {"date": today, "test_name": "RDW", "value": rdw, "unit": "%"},
+                {"date": today, "test_name": "Hematocrit", "value": hematocrit, "unit": "%"},
+                {"date": today, "test_name": "Platelets", "value": platelets, "unit": "million/uL"},
+                {"date": today, "test_name": "WBC", "value": wbc, "unit": "million/uL"},
+                {"date": today, "test_name": "MCHC", "value": mchc, "unit": "g/dL"}
             ]
         }
 

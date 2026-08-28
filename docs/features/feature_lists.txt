@@ -1,0 +1,8 @@
+# Thalassemia features
+"feature_order": ["Hemoglobin", "MCH", "RDW", "Red Blood Cells", "MCV", "Hematocrit", "MCHC"]
+
+# SCD features
+"feature_order": ["Hemoglobin","MCH","RDW","Red Blood Cells","MCV","Hematocrit","MCHC","Platelet Count","White Blood Cells"]
+
+# SCT features
+"feature_order": ["Hemoglobin","MCH","RDW","Red Blood Cells","MCV","Hematocrit","MCHC","Platelet Count","White Blood Cells"]
